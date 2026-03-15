@@ -57,6 +57,48 @@
 
   <main class="shop-container">
     <h1>Nuestra colección</h1>
+
+    <section class="shop-filters" aria-label="Búsqueda y filtros de productos">
+      <div class="shop-search">
+        <input
+          id="search-input"
+          type="search"
+          placeholder="Buscar por nombre, categoría o descripción"
+          autocomplete="off"
+        >
+      </div>
+      <div class="shop-filter-row">
+        <div class="shop-tags" id="search-tags" aria-label="Etiquetas rápidas de búsqueda">
+          <button type="button" class="tag-button" data-tag="hombre">Hombre</button>
+          <button type="button" class="tag-button" data-tag="mujer">Mujer</button>
+          <button type="button" class="tag-button" data-tag="unisex">Unisex</button>
+          <button type="button" class="tag-button" data-tag="oferta">Ofertas</button>
+          <button type="button" class="tag-button" data-tag="nuevo">Novedades</button>
+        </div>
+        <div class="shop-filter-controls">
+          <label class="filter-select">
+            <span>Género</span>
+            <select id="gender-filter">
+              <option value="">Todos</option>
+              <option value="hombre">Hombre</option>
+              <option value="mujer">Mujer</option>
+              <option value="unisex">Unisex</option>
+            </select>
+          </label>
+          <label class="filter-select">
+            <span>Ordenar por</span>
+            <select id="sort-order">
+              <option value="relevance">Más relevante</option>
+              <option value="price_asc">Precio: más barato</option>
+              <option value="price_desc">Precio: más caro</option>
+              <option value="rating_desc">Mejor valorado</option>
+              <option value="newest">Más nuevo</option>
+            </select>
+          </label>
+        </div>
+      </div>
+    </section>
+
     <div id="products-grid" class="products-grid"></div>
   </main>
 
@@ -101,9 +143,11 @@
 
   <footer class="footer">
     <div class="footer-content">
-      <div class="footer-section">
-        <h3>PaKas</h3>
-        <p>Descubre ropa con estilo y calidad. Tendencias que combinan con tu personalidad.</p>
+      <div class="footer-section footer-brand">
+        <a href="index.html" class="footer-logo-link">
+          <img src="img/pakas name.png" alt="PaKas" class="footer-logo">
+        </a>
+        <p class="footer-tagline">Descubre ropa con estilo y calidad. Tendencias que combinan con tu personalidad.</p>
       </div>
       <div class="footer-section">
         <h4>Enlaces</h4>

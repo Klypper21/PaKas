@@ -2,6 +2,33 @@ document.addEventListener('DOMContentLoaded', async () => {
   const grid = document.getElementById('products-grid');
   if (!grid) return;
 
+  const searchInput = document.getElementById('search-input');
+  const genderFilter = document.getElementById('gender-filter');
+  const sortSelect = document.getElementById('sort-order');
+  const tagsContainer = document.getElementById('search-tags');
+
+  let allProducts = [];
+  let productsCache = [];
+  let purchasedProductIds = [];
+  let currentSearch = '';
+  let currentGender = '';
+  let currentSort = 'relevance';
+
+  const loadPurchasedIds = () => {
+    try {
+      const raw = localStorage.getItem('purchasedProductIds');
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        purchasedProductIds = parsed;
+      }
+    } catch {
+      purchasedProductIds = [];
+    }
+  };
+
+  loadPurchasedIds();
+
   const loadProducts = async () => {
     if (!window.supabase) {
       grid.innerHTML = '<p class="error">Configura Supabase en js/config.js</p>';
@@ -24,7 +51,104 @@ document.addEventListener('DOMContentLoaded', async () => {
       grid.innerHTML = '<p>No hay productos disponibles actualmente.</p>';
       return;
     }
-    grid.innerHTML = available
+
+    // Cargar valoraciones para mostrar rating medio en las tarjetas
+    try {
+      const { data: reviewsData } = await supabase
+        .from('product_reviews')
+        .select('product_id,rating');
+
+      const ratingMap = {};
+      (reviewsData || []).forEach((r) => {
+        if (!r.product_id) return;
+        if (!ratingMap[r.product_id]) {
+          ratingMap[r.product_id] = { sum: 0, count: 0 };
+        }
+        ratingMap[r.product_id].sum += r.rating || 0;
+        ratingMap[r.product_id].count += 1;
+      });
+
+      available.forEach((p) => {
+        const stats = ratingMap[p.id] || { sum: 0, count: 0 };
+        p.reviews_count = stats.count;
+        p.avg_rating = stats.count ? stats.sum / stats.count : 0;
+      });
+    } catch {
+      // Si falla, simplemente no añadimos rating a las tarjetas
+    }
+
+    allProducts = available;
+    productsCache = data;
+    applyFiltersAndRender();
+  };
+
+  const applyFiltersAndRender = () => {
+    if (!allProducts.length) {
+      grid.innerHTML = '<p>No hay productos para mostrar.</p>';
+      return;
+    }
+
+    const term = currentSearch.trim().toLowerCase();
+    const gender = currentGender.trim().toLowerCase();
+
+    let filtered = allProducts.filter((p) => {
+      if (gender && (p.gender || '').toLowerCase() !== gender) return false;
+      if (!term) return true;
+      const haystack = `${p.name || ''} ${p.description || ''} ${p.category || ''}`.toLowerCase();
+      return haystack.includes(term);
+    });
+
+    const purchasedSet = new Set(purchasedProductIds || []);
+
+    const computeRelevanceScore = (p) => {
+      let score = 0;
+      if (purchasedSet.has(p.id)) score += 5;
+
+      if (term) {
+        const name = (p.name || '').toLowerCase();
+        const desc = (p.description || '').toLowerCase();
+        const category = (p.category || '').toLowerCase();
+        if (name.includes(term)) score += 4;
+        if (name.startsWith(term)) score += 1;
+        if (category.includes(term)) score += 2;
+        if (desc.includes(term)) score += 1;
+      }
+
+      if (gender && (p.gender || '').toLowerCase() === gender) score += 1;
+
+      return score;
+    };
+
+    const byCreatedDesc = (a, b) => {
+      const da = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const db = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return db - da;
+    };
+
+    if (currentSort === 'relevance') {
+      filtered = filtered
+        .map((p) => ({ p, score: computeRelevanceScore(p) }))
+        .sort((a, b) => {
+          if (b.score !== a.score) return b.score - a.score;
+          return byCreatedDesc(a.p, b.p);
+        })
+        .map((x) => x.p);
+    } else if (currentSort === 'price_asc') {
+      filtered.sort((a, b) => parseFloat(a.price) - parseFloat(b.price));
+    } else if (currentSort === 'price_desc') {
+      filtered.sort((a, b) => parseFloat(b.price) - parseFloat(a.price));
+    } else if (currentSort === 'rating_desc') {
+      filtered.sort((a, b) => {
+        const ra = typeof a.avg_rating === 'number' ? a.avg_rating : 0;
+        const rb = typeof b.avg_rating === 'number' ? b.avg_rating : 0;
+        if (rb !== ra) return rb - ra;
+        return byCreatedDesc(a, b);
+      });
+    } else if (currentSort === 'newest') {
+      filtered.sort(byCreatedDesc);
+    }
+
+    grid.innerHTML = filtered
       .map(
         (p) => `
       <div class="product-card product-card-clickable" data-id="${p.id}">
@@ -33,6 +157,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         </div>
         <div class="info">
           <h3>${escapeHtml(p.name)}</h3>
+          <div class="product-card-rating">
+            <span class="stars-display">${renderStars(p.avg_rating || 0)}</span>
+            <span class="rating-count">${p.reviews_count || 0} ${p.reviews_count === 1 ? 'reseña' : 'reseñas'}</span>
+          </div>
           <p>${escapeHtml(p.description || '')}</p>
           <span class="price">${parseFloat(p.price).toFixed(2)} CUP</span>
           <button class="btn btn-primary btn-add-cart" style="margin-top:0.75rem;width:100%"
@@ -78,7 +206,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (card) openProductModal(card.dataset.id);
   });
 
-  let productsCache = [];
   async function openProductModal(productId) {
     const modal = document.getElementById('product-modal');
     const mainImg = document.getElementById('modal-main-img');
@@ -303,10 +430,37 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (e.key === 'Escape') closeProductModal();
   });
 
-  loadProducts().then(async () => {
-    if (supabase) {
-      const { data } = await supabase.from('products').select('*');
-      if (data) productsCache = data;
-    }
-  });
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      currentSearch = e.target.value || '';
+      applyFiltersAndRender();
+    });
+  }
+
+  if (genderFilter) {
+    genderFilter.addEventListener('change', (e) => {
+      currentGender = e.target.value || '';
+      applyFiltersAndRender();
+    });
+  }
+
+  if (sortSelect) {
+    sortSelect.addEventListener('change', (e) => {
+      currentSort = e.target.value || 'relevance';
+      applyFiltersAndRender();
+    });
+  }
+
+  if (tagsContainer) {
+    tagsContainer.addEventListener('click', (e) => {
+      const btn = e.target.closest('.tag-button[data-tag]');
+      if (!btn) return;
+      const tag = btn.dataset.tag || '';
+      currentSearch = tag;
+      if (searchInput) searchInput.value = tag;
+      applyFiltersAndRender();
+    });
+  }
+
+  loadProducts();
 });
