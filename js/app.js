@@ -1,6 +1,8 @@
 document.addEventListener('DOMContentLoaded', async () => {
   Auth.init();
   initHamburgerMenu();
+  initUserDropdown();
+  initSearchRedirect();
   if (Auth.supabase) {
     initAuthButtons();
     updateNavAuth();
@@ -9,7 +11,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       updateNavAuth();
       updateCartCount();
     });
-    if (!window.location.pathname.includes('login')) {
+    if (!window.location.pathname.includes('login') && !window.location.pathname.includes('perfil.html')) {
       checkProfileComplete();
     }
     // Si está en la tienda (index) y es admin, redirigir al panel admin
@@ -24,8 +26,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 function initAuthButtons() {
   const btnLogin = document.getElementById('btn-login');
-  const btnLogout = document.getElementById('btn-logout');
-
   if (btnLogin) {
     btnLogin.onclick = () => {
       const current = window.location.pathname.split('/').pop() || 'index.html';
@@ -34,10 +34,8 @@ function initAuthButtons() {
       window.location.href = `login.html?${params.toString()}`;
     };
   }
-
-  if (btnLogout) {
-    btnLogout.onclick = () => Auth.logout();
-  }
+  const navUserLogout = document.getElementById('nav-user-logout');
+  if (navUserLogout) navUserLogout.onclick = () => Auth.logout();
 }
 
 async function checkProfileComplete() {
@@ -99,33 +97,73 @@ function initHamburgerMenu() {
   });
 }
 
+function initUserDropdown() {
+  const userBtn = document.getElementById('nav-user-btn');
+  const userDropdown = document.getElementById('nav-user-dropdown');
+  if (!userBtn || !userDropdown) return;
+  userBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    userDropdown.classList.toggle('is-open');
+    userBtn.setAttribute('aria-expanded', userDropdown.classList.contains('is-open'));
+  });
+  document.addEventListener('click', () => {
+    userDropdown.classList.remove('is-open');
+    userBtn.setAttribute('aria-expanded', 'false');
+  });
+}
+
+function initSearchRedirect() {
+  const path = window.location.pathname;
+  const isIndex = path.endsWith('index.html') || path === '/' || path.endsWith('/');
+  const searchInput = document.getElementById('search-input');
+  if (!searchInput || isIndex) return;
+  searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const q = (searchInput.value || '').trim();
+      location.href = q ? `index.html?q=${encodeURIComponent(q)}` : 'index.html';
+    }
+  });
+}
+
 function updateNavAuth() {
   const btnLogin = document.getElementById('btn-login');
-  const btnLogout = document.getElementById('btn-logout');
-  const userInfo = document.getElementById('user-info');
-  if (!btnLogin || !btnLogout) return;
-  
+  const navUserWrap = document.getElementById('nav-user-wrap');
+  const navUserName = document.getElementById('nav-user-name');
+  const bottomLogin = document.getElementById('nav-bottom-login');
+  const bottomUser = document.getElementById('nav-bottom-user');
+
   Auth.getUser().then(async user => {
     if (user) {
-      btnLogin.style.display = 'none';
-      btnLogout.style.display = 'inline-block';
+      if (btnLogin) btnLogin.style.display = 'none';
+      if (navUserWrap) navUserWrap.style.display = 'inline-block';
       const profile = await Auth.getProfile(user.id);
-      if (userInfo) userInfo.textContent = profile?.full_name?.trim() || user.email || '';
+      const name = profile?.full_name?.trim() || user.email || 'Usuario';
+      if (navUserName) navUserName.textContent = name.length > 18 ? name.slice(0, 16) + '…' : name;
+      if (bottomLogin) bottomLogin.style.display = 'none';
+      if (bottomUser) bottomUser.style.display = 'flex';
     } else {
-      btnLogin.style.display = 'inline-block';
-      btnLogout.style.display = 'none';
-      if (userInfo) userInfo.textContent = '';
+      if (btnLogin) btnLogin.style.display = 'inline-block';
+      if (navUserWrap) navUserWrap.style.display = 'none';
+      if (bottomLogin) bottomLogin.style.display = 'flex';
+      if (bottomUser) bottomUser.style.display = 'none';
     }
   });
 }
 
 function updateCartCount() {
-  const el = document.getElementById('cart-count');
-  if (!el) return;
   const cart = JSON.parse(localStorage.getItem('cart') || '[]');
   const count = cart.reduce((acc, item) => acc + item.quantity, 0);
-  el.textContent = count;
-  el.style.display = count > 0 ? 'inline' : 'none';
+  const topEl = document.getElementById('cart-count');
+  const bottomEl = document.getElementById('cart-count-bottom');
+  if (topEl) {
+    topEl.textContent = count;
+    topEl.style.display = count > 0 ? 'inline' : 'none';
+  }
+  if (bottomEl) {
+    bottomEl.textContent = count;
+    bottomEl.style.display = count > 0 ? 'flex' : 'none';
+  }
 }
 
 // Helpers para carrito en localStorage

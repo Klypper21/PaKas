@@ -19,31 +19,31 @@ const Auth = {
     const { data: { session } } = await this.supabase.auth.getSession();
     return session;
   },
-
-  async login(email, password) {
+  async login(identifier, password) {
     if (!this.supabase) return { error: 'Supabase no configurado' };
-    const { data, error } = await this.supabase.auth.signInWithPassword({ email, password });
+    const isEmail = typeof identifier === 'string' && identifier.includes('@');
+    const payload = isEmail ? { email: identifier } : { phone: identifier };
+    const { data, error } = await this.supabase.auth.signInWithPassword({
+      ...payload,
+      password,
+    });
     return { data, error: error?.message };
   },
 
-  async register(email, password, name = '', address = '') {
+  async register(identifier, password, name = '', address = '') {
     if (!this.supabase) return { error: 'Supabase no configurado' };
+    const isEmail = typeof identifier === 'string' && identifier.includes('@');
+    const authPayload = isEmail ? { email: identifier } : { phone: identifier };
     const options = {};
     if (name || address) {
       options.data = {};
       if (name) options.data.full_name = name;
       if (address) options.data.address = address;
     }
-    const { data, error } = await this.supabase.auth.signUp({ email, password, options });
-    return { data, error: error?.message };
-  },
-
-  async loginWithGoogle() {
-    if (!this.supabase) return { error: 'Supabase no configurado' };
-    const redirectTo = `${window.location.origin}${window.location.pathname.replace(/\/[^/]*$/, '')}/index.html`;
-    const { data, error } = await this.supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo }
+    const { data, error } = await this.supabase.auth.signUp({
+      ...authPayload,
+      password,
+      options,
     });
     return { data, error: error?.message };
   },

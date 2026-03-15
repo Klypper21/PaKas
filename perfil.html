@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mis Pedidos - PaKas</title>
+  <title>Mi perfil - PaKas</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -66,7 +66,6 @@
     </div>
   </nav>
 
-  <!-- Menú inferior tipo app (solo móvil) - misma estructura que inicio -->
   <nav class="nav-bottom" aria-label="Navegación principal">
     <a href="index.html" class="nav-bottom-link" aria-label="Inicio">
       <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
@@ -86,15 +85,33 @@
     </a>
   </nav>
 
-  <!-- Barra de categorías oculta en pedidos -->
   <div class="category-bar category-bar--hidden" aria-hidden="true"></div>
 
-  <main class="orders-container">
-    <h1>Mis pedidos</h1>
-    <div id="orders-list"></div>
-    <div id="orders-empty" class="orders-empty">
-      <p>No tienes pedidos aún</p>
-      <a href="index.html" class="btn btn-primary">Ir a la tienda</a>
+  <main class="auth-container profile-page">
+    <div id="perfil-require-login" class="auth-card">
+      <div class="auth-card-header">
+        <h2>Inicia sesión</h2>
+        <p>Necesitas iniciar sesión para editar tu perfil.</p>
+        <a href="login.html?redirect=perfil.html" class="btn btn-primary" style="margin-top:1rem">Iniciar sesión</a>
+      </div>
+    </div>
+
+    <div id="perfil-form-wrap" class="auth-card hidden" style="max-width: 440px;">
+      <div class="auth-card-header">
+        <h2>Editar perfil</h2>
+        <p>Actualiza tu nombre y teléfono para pedidos y reseñas.</p>
+      </div>
+      <form id="perfil-form" class="auth-form">
+        <label for="perfil-full_name">Nombre completo</label>
+        <input type="text" id="perfil-full_name" name="full_name" placeholder="Nombre completo" required autocomplete="name">
+        <label for="perfil-phone">Teléfono</label>
+        <input type="tel" id="perfil-phone" name="phone" placeholder="Teléfono" required autocomplete="tel">
+        <p id="perfil-error" class="error-msg"></p>
+        <button type="submit" class="btn btn-primary btn-block">Guardar cambios</button>
+      </form>
+      <div class="perfil-actions">
+        <button type="button" id="perfil-logout" class="btn btn-outline btn-block">Cerrar sesión</button>
+      </div>
     </div>
   </main>
 
@@ -102,6 +119,6 @@
   <script src="js/config.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/app.js"></script>
-  <script src="js/pedidos.js"></script>
+  <script src="js/perfil.js"></script>
 </body>
 </html>

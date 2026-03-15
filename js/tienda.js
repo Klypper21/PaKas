@@ -3,7 +3,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (!grid) return;
 
   const searchInput = document.getElementById('search-input');
-  const genderFilter = document.getElementById('gender-filter');
   const sortSelect = document.getElementById('sort-order');
   const tagsContainer = document.getElementById('search-tags');
 
@@ -11,7 +10,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   let productsCache = [];
   let purchasedProductIds = [];
   let currentSearch = '';
-  let currentGender = '';
+  let currentCategory = '';
   let currentSort = 'relevance';
 
   const loadPurchasedIds = () => {
@@ -89,10 +88,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const term = currentSearch.trim().toLowerCase();
-    const gender = currentGender.trim().toLowerCase();
+    const category = currentCategory.trim().toLowerCase();
 
     let filtered = allProducts.filter((p) => {
-      if (gender && (p.gender || '').toLowerCase() !== gender) return false;
+      if (category) {
+        const productCategories = (p.category || '')
+          .toLowerCase()
+          .split(/[\s,]+/)
+          .filter(Boolean);
+        if (!productCategories.length || !productCategories.includes(category)) return false;
+      }
       if (!term) return true;
       const haystack = `${p.name || ''} ${p.description || ''} ${p.category || ''}`.toLowerCase();
       return haystack.includes(term);
@@ -113,8 +118,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (category.includes(term)) score += 2;
         if (desc.includes(term)) score += 1;
       }
-
-      if (gender && (p.gender || '').toLowerCase() === gender) score += 1;
 
       return score;
     };
@@ -148,11 +151,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       filtered.sort(byCreatedDesc);
     }
 
+    const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
     grid.innerHTML = filtered
       .map(
-        (p) => `
+        (p) => {
+          const created = p.created_at ? new Date(p.created_at).getTime() : 0;
+          const isNew = created >= oneWeekAgo;
+          return `
       <div class="product-card product-card-clickable" data-id="${p.id}">
         <div class="img-wrap">
+          ${isNew ? '<span class="product-badge product-badge--new">New</span>' : ''}
           <img src="${p.image_url || 'https://placehold.co/400x500/1a1a2e/eaeaea?text=Producto'}" alt="${escapeHtml(p.name)}">
         </div>
         <div class="info">
@@ -172,7 +180,8 @@ document.addEventListener('DOMContentLoaded', async () => {
           </button>
         </div>
       </div>
-    `
+    `;
+        }
       )
       .join('');
   };
@@ -437,13 +446,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  if (genderFilter) {
-    genderFilter.addEventListener('change', (e) => {
-      currentGender = e.target.value || '';
-      applyFiltersAndRender();
-    });
-  }
-
   if (sortSelect) {
     sortSelect.addEventListener('change', (e) => {
       currentSort = e.target.value || 'relevance';
@@ -453,11 +455,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   if (tagsContainer) {
     tagsContainer.addEventListener('click', (e) => {
-      const btn = e.target.closest('.tag-button[data-tag]');
+      const btn = e.target.closest('.category-chip[data-category]');
       if (!btn) return;
-      const tag = btn.dataset.tag || '';
-      currentSearch = tag;
-      if (searchInput) searchInput.value = tag;
+      currentCategory = (btn.dataset.category || '').trim();
+      tagsContainer.querySelectorAll('.category-chip').forEach((c) => c.classList.remove('active'));
+      btn.classList.add('active');
       applyFiltersAndRender();
     });
   }
