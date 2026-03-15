@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Panel Admin - PaKas</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <a href="index.html" class="logo">
+      <picture>
+        <source media="(max-width: 768px)" srcset="img/logo paka.png">
+        <img src="img/pakas name.png" alt="PaKas">
+      </picture>
+    </a>
+    <button class="hamburger" aria-label="Menú">
+      <span></span>
+      <span></span>
+      <span></span>
+    </button>
+    <div class="nav-links">
+      <a href="index.html">Tienda</a>
+      <a href="admin.html">Admin</a>
+      <button id="btn-logout" class="btn btn-outline">Cerrar sesión</button>
+    </div>
+  </nav>
+
+  <main class="admin-container">
+    <h1>Panel de administración</h1>
+    <div class="admin-tabs">
+      <button type="button" class="admin-tab active" data-tab="compras">Compras</button>
+      <button type="button" class="admin-tab" data-tab="productos">Productos</button>
+    </div>
+
+    <section id="section-compras" class="admin-section">
+      <p class="admin-desc">Valida los pagos por transferencia marcando los pedidos como completados. Al marcar como pagado se descontará el stock de los productos.</p>
+      <div id="admin-orders" class="admin-orders"></div>
+      <div id="admin-empty" class="admin-empty">
+        <p>No hay pedidos pendientes</p>
+      </div>
+    </section>
+
+    <section id="section-productos" class="admin-section hidden">
+      <p class="admin-desc">Gestiona el catálogo: agrega nuevos productos o edita los existentes.</p>
+      <button type="button" id="btn-new-product" class="btn btn-primary">Nuevo producto</button>
+      <div id="admin-products" class="admin-products-grid"></div>
+      <div id="admin-products-empty" class="admin-empty hidden">
+        <p>No hay productos. Añade el primero.</p>
+      </div>
+    </section>
+  </main>
+
+  <!-- Modal producto (nuevo / editar) -->
+  <div id="product-form-modal" class="modal hidden">
+    <div class="modal-backdrop product-form-backdrop"></div>
+    <div class="modal-content product-form-content">
+      <button type="button" class="product-form-close" aria-label="Cerrar">&times;</button>
+      <h2 id="product-form-title">Nuevo producto</h2>
+      <form id="product-form" class="auth-form product-form">
+        <input type="hidden" id="product-form-id" value="">
+        <input type="hidden" id="product-extra-images-existing" value="[]">
+        <label for="product-name">Nombre</label>
+        <input type="text" id="product-name" required placeholder="Nombre del producto">
+        <label for="product-description">Descripción</label>
+        <textarea id="product-description" rows="3" placeholder="Descripción"></textarea>
+        <label for="product-category">Categoría</label>
+        <input type="text" id="product-category" placeholder="Ej. Camisetas">
+        <label for="product-price">Precio (CUP)</label>
+        <input type="number" id="product-price" step="0.01" min="0" required placeholder="0.00">
+        <label for="product-stock">Stock</label>
+        <input type="number" id="product-stock" min="0" value="0" placeholder="0">
+        <label for="product-image">URL imagen (opcional, si no subes archivo)</label>
+        <input type="url" id="product-image" placeholder="https://...">
+
+        <label for="product-image-file">Imagen principal (subir archivo)</label>
+        <input type="file" id="product-image-file" accept="image/*">
+
+        <label for="product-extra-images">Imágenes extra (galería)</label>
+        <input type="file" id="product-extra-images" accept="image/*" multiple>
+        <small class="field-hint">Puedes seleccionar varias imágenes. Se guardarán como galería del producto.</small>
+
+        <button type="submit" class="btn btn-primary btn-block">Guardar</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/admin.js"></script>
+</body>
+</html>
