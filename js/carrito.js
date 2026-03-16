@@ -259,6 +259,62 @@ document.addEventListener('DOMContentLoaded', async () => {
     renderCart();
     const cart = Cart.get();
     if (!cart.length) return;
+
+    // Validar stock justo antes de crear el pedido (evitar sobreventa)
+    const byProductNeeded = {};
+    for (const i of cart) {
+      const qty = Number(i.quantity) || 0;
+      if (qty > 0) {
+        byProductNeeded[i.id] = (byProductNeeded[i.id] || 0) + qty;
+      }
+    }
+    const productIds = Object.keys(byProductNeeded);
+    if (!productIds.length) return;
+
+    const { data: currentProducts, error: stockCheckErr } = await supabase
+      .from('products')
+      .select('id,name,stock')
+      .in('id', productIds);
+
+    if (stockCheckErr) {
+      notify('No se pudo verificar el stock. Intenta de nuevo en unos segundos.', 'error');
+      return;
+    }
+
+    const insufficient = [];
+    const stockMapNow = new Map(
+      (currentProducts || []).map((p) => [String(p.id), { stock: Number(p.stock ?? 0), name: p.name }])
+    );
+    for (const pid of productIds) {
+      const meta = stockMapNow.get(String(pid));
+      const required = byProductNeeded[pid];
+      const available = Number(meta?.stock ?? 0);
+      if (required > available) {
+        insufficient.push({
+          id: pid,
+          name: (meta?.name || '').trim() || 'Producto',
+          required,
+          available,
+        });
+      }
+    }
+
+    if (insufficient.length) {
+      const lines = insufficient
+        .slice(0, 3)
+        .map((p) => `${p.name} (pedidos ${p.required}, disponibles ${p.available})`);
+      const extra = insufficient.length > lines.length ? ` y ${insufficient.length - lines.length} más` : '';
+      notify(
+        `No hay stock suficiente para completar el pedido. Ajusta tu carrito.\n${lines.join(
+          ' · '
+        )}${extra}`,
+        'error'
+      );
+      await syncCartWithStock();
+      renderCart();
+      return;
+    }
+
     const subtotal = getSubtotal();
     const withDelivery = deliveryCheckbox?.checked === true;
     const address = (deliveryAddress?.value || '').trim();
@@ -305,33 +361,31 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
 
-    // Reservar stock inmediatamente para este pedido (estado pendiente)
-    const { data: stockItems, error: stockErr } = await supabase
-      .from('order_items')
-      .select('product_id, quantity')
-      .eq('order_id', order.id);
-    if (stockErr) {
-      notify('Pedido creado pero hubo un error reservando el stock: ' + stockErr.message, 'warning');
-    } else if (stockItems?.length) {
-      const byProduct = {};
-      for (const i of stockItems) {
-        const qty = Number(i.quantity) || 0;
-        if (qty > 0) {
-          byProduct[i.product_id] = (byProduct[i.product_id] || 0) + qty;
-        }
+    // Reservar/disminuir stock inmediatamente para este pedido (estado pendiente)
+    for (const i of cart) {
+      const qty = Number(i.quantity) || 0;
+      if (!qty) continue;
+      const productId = i.id;
+      const { data: product, error: fetchErr } = await supabase
+        .from('products')
+        .select('stock')
+        .eq('id', productId)
+        .single();
+      if (fetchErr || !product) {
+        notify('No se pudo actualizar el stock de un producto. Revisa tu pedido.', 'warning');
+        continue;
       }
-      for (const productId of Object.keys(byProduct)) {
-        const qty = byProduct[productId];
-        const { data: product, error: fetchErr } = await supabase
-          .from('products')
-          .select('stock')
-          .eq('id', productId)
-          .single();
-        if (fetchErr || !product) continue;
-        const current = Number(product.stock) || 0;
-        const newStock = Math.max(0, current - qty);
-        await supabase.from('products').update({ stock: newStock }).eq('id', productId);
+      const current = Number(product.stock) || 0;
+      if (qty > current) {
+        notify(
+          'Se detectó otro pedido o movimiento de stock al mismo tiempo. No se pudo completar correctamente la reserva. Revisa tu carrito y vuelve a intentarlo.',
+          'error'
+        );
+        // No revertimos aquí, pero avisamos del posible conflicto.
+        continue;
       }
+      const newStock = Math.max(0, current - qty);
+      await supabase.from('products').update({ stock: newStock }).eq('id', productId);
     }
 
     Cart.clear();
