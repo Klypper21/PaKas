@@ -23,6 +23,81 @@ document.addEventListener('DOMContentLoaded', async () => {
   };
 
   let lastStockMap = new Map(); // productId -> { stock, name }
+  let reservedStock = null; // { byProduct: { [productId]: qty } }
+
+  async function rollbackReservedStock(byProduct) {
+    if (!byProduct || !window.supabase) return;
+    try {
+      for (const [productId, qty] of Object.entries(byProduct)) {
+        const n = Number(qty) || 0;
+        if (!n) continue;
+        const { data: product, error: fetchErr } = await supabase
+          .from('products')
+          .select('stock')
+          .eq('id', productId)
+          .single();
+        if (fetchErr || !product) continue;
+        const current = Number(product.stock) || 0;
+        await supabase.from('products').update({ stock: current + n }).eq('id', productId).eq('stock', current);
+      }
+    } catch (e) {
+      console.error('Error devolviendo stock reservado', e);
+    }
+  }
+
+  async function reserveStockCAS(byProduct) {
+    // Reserva stock con compare-and-set para detectar concurrencia.
+    // Devuelve { ok, conflict, insufficient, stockNow }
+    const productIds = Object.keys(byProduct || {});
+    if (!productIds.length) return { ok: false, conflict: false, insufficient: false, stockNow: new Map() };
+
+    const { data: currentProducts, error: stockErr } = await supabase
+      .from('products')
+      .select('id,name,stock')
+      .in('id', productIds);
+
+    if (stockErr) return { ok: false, conflict: false, insufficient: false, stockNow: new Map() };
+
+    const stockNow = new Map(
+      (currentProducts || []).map((p) => [String(p.id), { stock: Number(p.stock ?? 0), name: p.name }])
+    );
+
+    // 1) validar suficiente stock con el snapshot
+    for (const pid of productIds) {
+      const meta = stockNow.get(String(pid));
+      const available = Number(meta?.stock ?? 0);
+      const required = Number(byProduct[pid] || 0);
+      if (required > available) {
+        return { ok: false, conflict: false, insufficient: true, stockNow };
+      }
+    }
+
+    // 2) aplicar CAS: update donde stock == available (snapshot)
+    const reserved = {};
+    for (const pid of productIds) {
+      const meta = stockNow.get(String(pid));
+      const available = Number(meta?.stock ?? 0);
+      const required = Number(byProduct[pid] || 0);
+      const newStock = Math.max(0, available - required);
+      const { data: updated, error: updErr } = await supabase
+        .from('products')
+        .update({ stock: newStock })
+        .eq('id', pid)
+        .eq('stock', available)
+        .select('id')
+        .maybeSingle();
+
+      if (updErr || !updated) {
+        // Conflicto: alguien más cambió el stock entre lectura y update
+        await rollbackReservedStock(reserved);
+        return { ok: false, conflict: true, insufficient: false, stockNow };
+      }
+
+      reserved[pid] = required;
+    }
+
+    return { ok: true, conflict: false, insufficient: false, stockNow };
+  }
 
   async function syncCartWithStock() {
     const cart = Cart.get();
@@ -236,61 +311,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     const cart = Cart.get();
     if (!cart.length) return;
 
-    // Aplicar la misma validación fuerte del botón "Confirmar pedido" aquí,
-    // para NO mostrar la pantalla de pago si ya no alcanza el stock.
-    const byProductNeeded = {};
+    // Reservar stock para el carrito actual
+    const byProduct = {};
     for (const i of cart) {
       const qty = Number(i.quantity) || 0;
       if (qty > 0) {
-        byProductNeeded[i.id] = (byProductNeeded[i.id] || 0) + qty;
+        byProduct[i.id] = (byProduct[i.id] || 0) + qty;
       }
     }
-    const productIds = Object.keys(byProductNeeded);
+    const productIds = Object.keys(byProduct);
     if (!productIds.length) return;
 
-    const { data: currentProducts, error: stockCheckErr } = await supabase
-      .from('products')
-      .select('id,name,stock')
-      .in('id', productIds);
-
-    if (stockCheckErr) {
-      notify('No se pudo verificar el stock. Intenta de nuevo en unos segundos.', 'error');
-      return;
-    }
-
-    const stockMapNow = new Map(
-      (currentProducts || []).map((p) => [String(p.id), { stock: Number(p.stock ?? 0), name: p.name }])
-    );
-    const insufficient = [];
-    for (const pid of productIds) {
-      const meta = stockMapNow.get(String(pid));
-      const required = byProductNeeded[pid];
-      const available = Number(meta?.stock ?? 0);
-      if (required > available) {
-        insufficient.push({
-          id: pid,
-          name: (meta?.name || '').trim() || 'Producto',
-          required,
-          available,
-        });
+    const reserveRes = await reserveStockCAS(byProduct);
+    if (!reserveRes.ok) {
+      if (reserveRes.conflict) {
+        notify(
+          'Otra persona está realizando un pedido al mismo tiempo y el stock cambió. Actualiza el carrito e intenta de nuevo.',
+          'error'
+        );
+      } else if (reserveRes.insufficient) {
+        notify('No hay stock suficiente para reservar este pedido. Ajusta tu carrito.', 'error');
+      } else {
+        notify('No se pudo reservar el stock. Intenta de nuevo.', 'error');
       }
-    }
-
-    if (insufficient.length) {
-      const lines = insufficient
-        .slice(0, 3)
-        .map((p) => `${p.name} (pedidos ${p.required}, disponibles ${p.available})`);
-      const extra = insufficient.length > lines.length ? ` y ${insufficient.length - lines.length} más` : '';
-      notify(
-        `Otro usuario compró al mismo tiempo y ya no hay stock suficiente. Ajusta tu carrito.\n${lines.join(
-          ' · '
-        )}${extra}`,
-        'error'
-      );
       await syncCartWithStock();
       renderCart();
+      // Importante: NO abrir modal/pantalla de pago
       return;
     }
+
+    reservedStock = { byProduct: byProduct };
 
     orderRef.textContent = 'EMP-' + Date.now().toString(36).toUpperCase();
     transferRef.value = '';
@@ -303,7 +353,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     modal.classList.remove('hidden');
   });
 
-  btnCancel?.addEventListener('click', () => modal.classList.add('hidden'));
+  btnCancel?.addEventListener('click', async () => {
+    // Si se cancela el pedido, devolvemos la reserva de stock
+    if (reservedStock && reservedStock.byProduct) {
+      await rollbackReservedStock(reservedStock.byProduct);
+      reservedStock = null;
+    }
+    modal.classList.add('hidden');
+  });
 
   btnConfirm?.addEventListener('click', async () => {
     const user = await Auth.getUser();
@@ -418,6 +475,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       notify('Error al guardar items: ' + itemsErr.message, 'error');
       return;
     }
+
+    // En este punto el stock ya se había descontado al pulsar "Realizar pedido" (reserva).
+    // Solo marcamos la reserva como consumida para que no se devuelva.
+    reservedStock = null;
 
     Cart.clear();
     modal.classList.add('hidden');
