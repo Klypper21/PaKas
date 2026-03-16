@@ -25,6 +25,44 @@ document.addEventListener('DOMContentLoaded', async () => {
     else console.log(type.toUpperCase() + ':', msg);
   };
 
+  // Referencias para la sección de productos (se inicializan bajo demanda)
+  let adminProductsGrid;
+  let adminProductsEmpty;
+  let btnNewProduct;
+  let productFormModal;
+  let productFormTitle;
+  let productForm;
+  let productFormId;
+  let productName;
+  let productDescription;
+  let productCategory;
+  let productPrice;
+  let productStock;
+  let productImage;
+  let productImageFile;
+  let productExtraImages;
+  let productExtraImagesExisting;
+
+  function ensureAdminProductElements() {
+    if (adminProductsGrid && productFormModal && productForm) return;
+    adminProductsGrid = document.getElementById('admin-products');
+    adminProductsEmpty = document.getElementById('admin-products-empty');
+    btnNewProduct = document.getElementById('btn-new-product');
+    productFormModal = document.getElementById('product-form-modal');
+    productFormTitle = document.getElementById('product-form-title');
+    productForm = document.getElementById('product-form');
+    productFormId = document.getElementById('product-form-id');
+    productName = document.getElementById('product-name');
+    productDescription = document.getElementById('product-description');
+    productCategory = document.getElementById('product-category');
+    productPrice = document.getElementById('product-price');
+    productStock = document.getElementById('product-stock');
+    productImage = document.getElementById('product-image');
+    productImageFile = document.getElementById('product-image-file');
+    productExtraImages = document.getElementById('product-extra-images');
+    productExtraImagesExisting = document.getElementById('product-extra-images-existing');
+  }
+
   // ——— Pestañas ———
   const tabs = document.querySelectorAll('.admin-tab');
   const sectionCompras = document.getElementById('section-compras');
@@ -285,22 +323,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   // ——— Productos (CRUD) ———
-  const adminProductsGrid = document.getElementById('admin-products');
-  const adminProductsEmpty = document.getElementById('admin-products-empty');
-  const btnNewProduct = document.getElementById('btn-new-product');
-  const productFormModal = document.getElementById('product-form-modal');
-  const productFormTitle = document.getElementById('product-form-title');
-  const productForm = document.getElementById('product-form');
-  const productFormId = document.getElementById('product-form-id');
-  const productName = document.getElementById('product-name');
-  const productDescription = document.getElementById('product-description');
-  const productCategory = document.getElementById('product-category');
-  const productPrice = document.getElementById('product-price');
-  const productStock = document.getElementById('product-stock');
-  const productImage = document.getElementById('product-image');
-  const productImageFile = document.getElementById('product-image-file');
-  const productExtraImages = document.getElementById('product-extra-images');
-  const productExtraImagesExisting = document.getElementById('product-extra-images-existing');
+  ensureAdminProductElements();
 
   function parseExtraImages(raw) {
     if (!raw) return [];
@@ -427,6 +450,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   async function loadAdminProducts() {
+    ensureAdminProductElements();
     const { data: products, error: productsErr } = await supabase
       .from('products')
       .select('*')
