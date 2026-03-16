@@ -433,6 +433,93 @@ const Cart = {
     else cart.push({ ...product, quantity });
     this.set(cart);
   },
+  async getStock(productId) {
+    if (!window.supabase) return null;
+    if (!productId) return null;
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('stock')
+        .eq('id', productId)
+        .single();
+      if (error) return null;
+      return Number(data?.stock ?? 0);
+    } catch (e) {
+      console.error(e);
+      return null;
+    }
+  },
+  async addWithStock(product, quantity = 1, opts = {}) {
+    const requested = Math.max(0, Number(quantity) || 0);
+    if (!requested) return { ok: false, reason: 'invalid_quantity', added: 0 };
+    if (!product?.id) return { ok: false, reason: 'missing_id', added: 0 };
+
+    const notify = typeof opts.notify === 'function' ? opts.notify : null;
+    const stock = await this.getStock(product.id);
+
+    if (typeof stock === 'number') {
+      if (stock <= 0) {
+        notify?.('Este producto está agotado.', 'warning');
+        return { ok: false, reason: 'out_of_stock', added: 0, stock };
+      }
+    }
+
+    const cart = this.get();
+    const idx = cart.findIndex((i) => i.id === product.id);
+    const currentQty = idx >= 0 ? Number(cart[idx].quantity) || 0 : 0;
+    const desired = currentQty + requested;
+
+    const finalQty = typeof stock === 'number' ? Math.min(desired, stock) : desired;
+    const added = Math.max(0, finalQty - currentQty);
+
+    if (added <= 0) {
+      if (typeof stock === 'number') {
+        notify?.(`Solo quedan ${stock} en stock.`, 'warning');
+      }
+      return { ok: false, reason: 'capped', added: 0, stock, finalQty };
+    }
+
+    if (idx >= 0) cart[idx].quantity = finalQty;
+    else cart.push({ ...product, quantity: finalQty });
+    this.set(cart);
+
+    if (typeof stock === 'number' && finalQty < desired) {
+      notify?.(`Se ajustó la cantidad al stock disponible (${stock}).`, 'warning');
+      return { ok: true, reason: 'added_capped', added, stock, finalQty };
+    }
+    return { ok: true, reason: 'added', added, stock, finalQty };
+  },
+  async setQuantityWithStock(productId, quantity, opts = {}) {
+    const notify = typeof opts.notify === 'function' ? opts.notify : null;
+    const q = Math.max(0, Math.floor(Number(quantity) || 0));
+    const cart = this.get();
+    const idx = cart.findIndex((i) => i.id === productId);
+    if (idx < 0) return { ok: false, reason: 'not_found' };
+
+    const stock = await this.getStock(productId);
+    if (typeof stock === 'number' && stock <= 0) {
+      // Si está agotado, lo sacamos del carrito
+      const next = cart.filter((i) => i.id !== productId);
+      this.set(next);
+      notify?.('Se eliminó un producto del carrito por estar agotado.', 'warning');
+      return { ok: true, reason: 'removed_out_of_stock', stock };
+    }
+
+    const finalQty = typeof stock === 'number' ? Math.min(q, stock) : q;
+    if (finalQty <= 0) {
+      const next = cart.filter((i) => i.id !== productId);
+      this.set(next);
+      return { ok: true, reason: 'removed', stock };
+    }
+
+    cart[idx].quantity = finalQty;
+    this.set(cart);
+    if (typeof stock === 'number' && finalQty < q) {
+      notify?.(`Se ajustó la cantidad al stock disponible (${stock}).`, 'warning');
+      return { ok: true, reason: 'set_capped', stock, finalQty };
+    }
+    return { ok: true, reason: 'set', stock, finalQty };
+  },
   remove(productId) {
     this.set(this.get().filter(i => i.id !== productId));
   },

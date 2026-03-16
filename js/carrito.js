@@ -22,13 +22,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     else console.log(type.toUpperCase() + ':', msg);
   };
 
-  async function pruneOutOfStockCartItems() {
+  let lastStockMap = new Map(); // productId -> { stock, name }
+
+  async function syncCartWithStock() {
     const cart = Cart.get();
-    if (!cart.length) return { removedCount: 0 };
-    if (!window.supabase) return { removedCount: 0 };
+    if (!cart.length) {
+      lastStockMap = new Map();
+      return { removedCount: 0, cappedCount: 0, stockMap: lastStockMap };
+    }
+    if (!window.supabase) return { removedCount: 0, cappedCount: 0, stockMap: lastStockMap };
 
     const ids = Array.from(new Set(cart.map((i) => i.id).filter(Boolean)));
-    if (!ids.length) return { removedCount: 0 };
+    if (!ids.length) return { removedCount: 0, cappedCount: 0, stockMap: lastStockMap };
 
     const { data, error } = await supabase
       .from('products')
@@ -37,18 +42,28 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (error) {
       console.error(error);
-      return { removedCount: 0 };
+      return { removedCount: 0, cappedCount: 0, stockMap: lastStockMap };
     }
 
     const map = new Map((data || []).map((p) => [String(p.id), p]));
     const keep = [];
     const removed = [];
+    const capped = [];
 
     for (const item of cart) {
       const p = map.get(String(item.id));
       const stock = Number(p?.stock ?? 0);
-      if (!p || stock <= 0) removed.push(item);
-      else keep.push(item);
+      if (!p || stock <= 0) {
+        removed.push(item);
+        continue;
+      }
+      const qty = Number(item.quantity) || 0;
+      if (qty > stock) {
+        capped.push({ ...item, prevQty: qty, newQty: stock, stock, name: p?.name || item?.name });
+        keep.push({ ...item, quantity: stock });
+      } else {
+        keep.push(item);
+      }
     }
 
     if (removed.length) {
@@ -62,7 +77,26 @@ document.addEventListener('DOMContentLoaded', async () => {
       notify(`Se eliminaron ${removed.length} producto(s) del carrito por estar agotados${label}.`, 'warning');
     }
 
-    return { removedCount: removed.length };
+    if (capped.length) {
+      const names = capped
+        .map((r) => (r?.name || '').trim())
+        .filter(Boolean)
+        .slice(0, 3);
+      const suffix = capped.length > names.length ? ` y ${capped.length - names.length} más` : '';
+      const label = names.length ? `: ${names.join(', ')}${suffix}` : '';
+      notify(`Se ajustaron cantidades al stock disponible${label}.`, 'warning');
+      // ya quedó guardado en Cart.set(keep) si hubo removed; si no, aseguramos set
+      if (!removed.length) Cart.set(keep);
+    }
+
+    lastStockMap = new Map(
+      (data || []).map((p) => [
+        String(p.id),
+        { stock: Number(p.stock ?? 0), name: (p.name || '').trim() || null },
+      ])
+    );
+
+    return { removedCount: removed.length, cappedCount: capped.length, stockMap: lastStockMap };
   }
 
   function getSubtotal() {
@@ -96,6 +130,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       .map((item) => {
         const unit = parseFloat(item.price) || 0;
         const qty = Number(item.quantity) || 0;
+        const meta = lastStockMap.get(String(item.id));
+        const maxStock = Number(meta?.stock);
+        const stockLabel = Number.isFinite(maxStock) ? `Stock: ${maxStock}` : '';
         const img = item.image_url || 'https://placehold.co/80x100/1a1a2e/eaeaea?text=Img';
         return `
           <div class="order-product cart-product" data-product-id="${item.id}">
@@ -103,9 +140,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             <div class="details">
               <h3>${item.name}</h3>
               <p>${unit.toFixed(2)} CUP x ${qty}</p>
+              ${stockLabel ? `<p class="cart-stock-hint">${stockLabel}</p>` : ''}
             </div>
             <div class="cart-product__right">
               <p>${(unit * qty).toFixed(2)} CUP</p>
+              <div class="qty-controls" aria-label="Cantidad">
+                <button type="button" class="qty-btn qty-btn--minus" data-qty-action="minus" data-product-id="${item.id}" aria-label="Disminuir cantidad">−</button>
+                <span class="qty-value" aria-label="Cantidad actual">${qty}</span>
+                <button type="button" class="qty-btn qty-btn--plus" data-qty-action="plus" data-product-id="${item.id}" aria-label="Aumentar cantidad">+</button>
+              </div>
               <button class="remove" type="button" data-remove-id="${item.id}">Eliminar</button>
             </div>
           </div>
@@ -115,6 +158,31 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   cartItems?.addEventListener('click', (e) => {
+    const qtyBtn = e.target.closest('button.qty-btn');
+    if (qtyBtn) {
+      const id = qtyBtn.dataset.productId;
+      const action = qtyBtn.dataset.qtyAction;
+      if (!id || !action) return;
+      const cart = Cart.get();
+      const item = cart.find((i) => String(i.id) === String(id));
+      const current = Number(item?.quantity) || 0;
+      const maxStock = Number(lastStockMap.get(String(id))?.stock);
+
+      if (action === 'minus') {
+        const next = current - 1;
+        Cart.setQuantityWithStock(id, next, { notify }).then(() => renderCart());
+        return;
+      }
+      if (action === 'plus') {
+        if (Number.isFinite(maxStock) && current >= maxStock) {
+          notify(`No puedes añadir más. Solo quedan ${maxStock} en stock.`, 'warning');
+          return;
+        }
+        Cart.setQuantityWithStock(id, current + 1, { notify }).then(() => renderCart());
+        return;
+      }
+    }
+
     const rm = e.target.closest('button.remove');
     if (rm) {
       const id = rm.dataset.removeId;
@@ -162,7 +230,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       location.href = 'login.html?redirect=carrito.html';
       return;
     }
-    await pruneOutOfStockCartItems();
+    await syncCartWithStock();
     renderCart();
     const cart = Cart.get();
     if (!cart.length) return;
@@ -187,7 +255,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       notify('Completa tu perfil (nombre y teléfono) antes de realizar el pedido.', 'warning');
       return;
     }
-    await pruneOutOfStockCartItems();
+    await syncCartWithStock();
     renderCart();
     const cart = Cart.get();
     if (!cart.length) return;
@@ -282,7 +350,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  await pruneOutOfStockCartItems();
+  await syncCartWithStock();
   renderCart();
 
   // -------- Modal de producto (detalle) en carrito --------
@@ -359,9 +427,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       addCartBtn.disabled = (product.stock ?? 10) <= 0;
       addCartBtn.onclick = (ev) => {
         ev.preventDefault();
-        Cart.add({ id: product.id, name: product.name, price: parseFloat(product.price) || 0, image_url: mainUrl }, 1);
-        if (typeof updateCartCount === 'function') updateCartCount();
-        notify('Producto añadido al carrito', 'success');
+        (async () => {
+          const res = await Cart.addWithStock(
+            { id: product.id, name: product.name, price: parseFloat(product.price) || 0, image_url: mainUrl },
+            1,
+            { notify }
+          );
+          if (res.ok) notify('Producto añadido al carrito', 'success');
+          await syncCartWithStock();
+          renderCart();
+        })();
       };
     }
 

@@ -255,9 +255,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       const name = btn.dataset.name;
       const price = parseFloat(btn.dataset.price);
       const image = btn.dataset.image || '';
-      Cart.add({ id, name, price, image_url: image }, 1);
-      if (typeof updateCartCount === 'function') updateCartCount();
-      if (window.UI?.toast) UI.toast('Producto añadido al carrito', 'success');
+      (async () => {
+        const notify = (msg, type = 'info') => (window.UI?.toast ? UI.toast(msg, type) : null);
+        const res = await Cart.addWithStock({ id, name, price, image_url: image }, 1, { notify });
+        if (res.ok) notify('Producto añadido al carrito', 'success');
+      })();
       return;
     }
     const card = e.target.closest('.product-card-clickable');
@@ -339,12 +341,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     addCartBtn.disabled = (product.stock ?? 10) <= 0;
     addCartBtn.onclick = (ev) => {
       ev.preventDefault();
-      Cart.add(
-        { id: product.id, name: product.name, price: parseFloat(product.price), image_url: mainUrl },
-        1
-      );
-      if (typeof updateCartCount === 'function') updateCartCount();
-      if (window.UI?.toast) UI.toast('Producto añadido al carrito', 'success');
+      (async () => {
+        const notify = (msg, type = 'info') => (window.UI?.toast ? UI.toast(msg, type) : null);
+        const res = await Cart.addWithStock(
+          { id: product.id, name: product.name, price: parseFloat(product.price), image_url: mainUrl },
+          1,
+          { notify }
+        );
+        if (res.ok) notify('Producto añadido al carrito', 'success');
+      })();
     };
 
     const { data: reviews } = await supabase
