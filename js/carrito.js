@@ -1,6 +1,6 @@
 const DELIVERY_COST_CUP = 150;
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   const cartItems = document.getElementById('cart-items');
   const cartEmpty = document.getElementById('cart-empty');
   const cartSummary = document.getElementById('cart-summary');
@@ -21,6 +21,49 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.UI?.toast) UI.toast(msg, type);
     else console.log(type.toUpperCase() + ':', msg);
   };
+
+  async function pruneOutOfStockCartItems() {
+    const cart = Cart.get();
+    if (!cart.length) return { removedCount: 0 };
+    if (!window.supabase) return { removedCount: 0 };
+
+    const ids = Array.from(new Set(cart.map((i) => i.id).filter(Boolean)));
+    if (!ids.length) return { removedCount: 0 };
+
+    const { data, error } = await supabase
+      .from('products')
+      .select('id,name,stock')
+      .in('id', ids);
+
+    if (error) {
+      console.error(error);
+      return { removedCount: 0 };
+    }
+
+    const map = new Map((data || []).map((p) => [String(p.id), p]));
+    const keep = [];
+    const removed = [];
+
+    for (const item of cart) {
+      const p = map.get(String(item.id));
+      const stock = Number(p?.stock ?? 0);
+      if (!p || stock <= 0) removed.push(item);
+      else keep.push(item);
+    }
+
+    if (removed.length) {
+      Cart.set(keep);
+      const names = removed
+        .map((r) => (r?.name || '').trim())
+        .filter(Boolean)
+        .slice(0, 3);
+      const suffix = removed.length > names.length ? ` y ${removed.length - names.length} más` : '';
+      const label = names.length ? `: ${names.join(', ')}${suffix}` : '';
+      notify(`Se eliminaron ${removed.length} producto(s) del carrito por estar agotados${label}.`, 'warning');
+    }
+
+    return { removedCount: removed.length };
+  }
 
   function getSubtotal() {
     const cart = Cart.get();
@@ -119,6 +162,8 @@ document.addEventListener('DOMContentLoaded', () => {
       location.href = 'login.html?redirect=carrito.html';
       return;
     }
+    await pruneOutOfStockCartItems();
+    renderCart();
     const cart = Cart.get();
     if (!cart.length) return;
     orderRef.textContent = 'EMP-' + Date.now().toString(36).toUpperCase();
@@ -142,6 +187,8 @@ document.addEventListener('DOMContentLoaded', () => {
       notify('Completa tu perfil (nombre y teléfono) antes de realizar el pedido.', 'warning');
       return;
     }
+    await pruneOutOfStockCartItems();
+    renderCart();
     const cart = Cart.get();
     if (!cart.length) return;
     const subtotal = getSubtotal();
@@ -235,6 +282,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  await pruneOutOfStockCartItems();
   renderCart();
 
   // -------- Modal de producto (detalle) en carrito --------

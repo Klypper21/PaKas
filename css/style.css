@@ -1827,7 +1827,8 @@ body {
 .toast-root {
   position: fixed;
   right: 16px;
-  bottom: calc(16px + env(safe-area-inset-bottom));
+  top: calc(16px + env(safe-area-inset-top));
+  bottom: auto;
   z-index: 3000;
   display: flex;
   flex-direction: column;
