@@ -75,6 +75,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       </div>
       <div class="order-items">${itemsHtml}</div>
       ${order.transfer_reference ? `<p style="margin-top:0.5rem;font-size:0.9rem">Ref. transferencia: ${order.transfer_reference}</p>` : ''}
+      ${order.status === 'cancelado' && order.cancel_reason ? `<p class="order-cancel-reason"><strong>Motivo de cancelación:</strong> ${escapeHtml(order.cancel_reason)}</p>` : ''}
     `;
     list.appendChild(card);
   }

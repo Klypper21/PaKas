@@ -1401,6 +1401,50 @@ body {
   color: var(--text);
 }
 
+.order-cancel-reason {
+  margin-top: 0.75rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(192, 57, 43, 0.25);
+  background: rgba(192, 57, 43, 0.06);
+  color: var(--text-secondary);
+}
+
+.order-cancel-reason strong {
+  color: var(--error);
+}
+
+/* Checkout: recogida en tienda */
+.pickup-info {
+  margin-top: 0.75rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+}
+
+.pickup-info p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+
+.pickup-info p + p {
+  margin-top: 0.35rem;
+}
+
+.pickup-muted {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+/* Carrito: alinear lado derecho */
+.cart-product__right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+}
+
 /* Admin */
 .admin-desc {
   color: var(--text-muted);
@@ -1777,6 +1821,122 @@ body {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* Toast notifications */
+.toast-root {
+  position: fixed;
+  right: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 3000;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: min(420px, calc(100vw - 32px));
+}
+
+.toast {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  padding: 0.85rem 1rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  animation: fadeUp 0.22s ease-out;
+}
+
+.toast__body {
+  flex: 1;
+  color: var(--text);
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+
+.toast__close {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0;
+}
+
+.toast--success { border-left: 4px solid var(--success); }
+.toast--error { border-left: 4px solid var(--error); }
+.toast--warning { border-left: 4px solid var(--warning); }
+.toast--info { border-left: 4px solid var(--text); }
+
+.toast--hide {
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+/* UI modal tweaks */
+.ui-modal__content {
+  border-radius: 12px;
+}
+
+.ui-modal__title {
+  margin-bottom: 0.75rem;
+}
+
+.ui-modal__text {
+  color: var(--text-secondary);
+  margin-bottom: 0.75rem;
+}
+
+.ui-modal__textarea {
+  width: 100%;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  font-family: inherit;
+  color: var(--text);
+  resize: vertical;
+  min-height: 90px;
+}
+
+.ui-modal__textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.ui-modal__actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.ui-modal__actions .btn {
+  flex: 1;
+}
+
+/* Indicador de pestaña activa (línea debajo) en móvil */
+@media (max-width: 768px) {
+  .admin-tabs,
+  .auth-tabs {
+    position: relative;
+  }
+
+  .admin-tab,
+  .auth-tabs .tab {
+    position: relative;
+  }
+
+  .admin-tab.active::after,
+  .auth-tabs .tab.active::after {
+    content: '';
+    position: absolute;
+    left: 18%;
+    right: 18%;
+    bottom: -6px;
+    height: 2px;
+    background: var(--text);
+  }
 }
 
 /* Product modal */

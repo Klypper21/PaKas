@@ -257,7 +257,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const image = btn.dataset.image || '';
       Cart.add({ id, name, price, image_url: image }, 1);
       if (typeof updateCartCount === 'function') updateCartCount();
-      alert('Producto añadido al carrito');
+      if (window.UI?.toast) UI.toast('Producto añadido al carrito', 'success');
       return;
     }
     const card = e.target.closest('.product-card-clickable');
@@ -344,7 +344,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         1
       );
       if (typeof updateCartCount === 'function') updateCartCount();
-      alert('Producto añadido al carrito');
+      if (window.UI?.toast) UI.toast('Producto añadido al carrito', 'success');
     };
 
     const { data: reviews } = await supabase
@@ -443,17 +443,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   async function submitReview(productId) {
     if (!selectedRating) {
-      alert('Selecciona una calificación de 1 a 5 estrellas.');
+      if (window.UI?.toast) UI.toast('Selecciona una calificación de 1 a 5 estrellas.', 'warning');
       return;
     }
     const user = await Auth.getUser();
     if (!user) {
-      alert('Debes iniciar sesión para enviar una reseña.');
+      if (window.UI?.toast) UI.toast('Debes iniciar sesión para enviar una reseña.', 'warning');
       return;
     }
     const profile = await Auth.getProfile(user.id);
     if (!profile?.full_name?.trim() || !profile?.phone?.trim()) {
-      alert('Completa tu perfil (nombre y teléfono) para poder publicar reseñas.');
+      if (window.UI?.toast) UI.toast('Completa tu perfil (nombre y teléfono) para poder publicar reseñas.', 'warning');
       return;
     }
     const user_name = profile.full_name.trim();
@@ -469,7 +469,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       { onConflict: 'product_id,user_id' }
     );
     if (error) {
-      alert('Error al enviar la reseña: ' + error.message);
+      if (window.UI?.toast) UI.toast('Error al enviar la reseña: ' + error.message, 'error');
       return;
     }
     resetReviewForm();

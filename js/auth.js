@@ -74,7 +74,7 @@ const Auth = {
     if (!this.supabase) return { error: 'Supabase no configurado' };
     const user = await this.getUser();
     if (!user) return { error: 'No hay sesión' };
-    const { full_name, phone } = payload || {};
+    const { full_name, phone, address } = payload || {};
     if (!full_name?.trim() || !phone?.trim()) {
       return { error: 'Nombre y teléfono son obligatorios' };
     }
@@ -87,7 +87,17 @@ const Auth = {
       },
       { onConflict: 'user_id' }
     );
-    return { error: error?.message };
+    if (error) return { error: error?.message };
+
+    // Guardar dirección en metadatos del usuario (no depende del esquema de profiles)
+    const addr = (address || '').trim();
+    if (addr) {
+      const { error: metaErr } = await this.supabase.auth.updateUser({
+        data: { ...(user.user_metadata || {}), address: addr, full_name: full_name.trim() },
+      });
+      if (metaErr) return { error: metaErr?.message };
+    }
+    return { error: null };
   },
 
   async logout() {

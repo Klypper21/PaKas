@@ -20,6 +20,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     return div.innerHTML;
   }
 
+  const notify = (msg, type = 'info') => {
+    if (window.UI?.toast) UI.toast(msg, type);
+    else console.log(type.toUpperCase() + ':', msg);
+  };
+
   // ——— Pestañas ———
   const tabs = document.querySelectorAll('.admin-tab');
   const sectionCompras = document.getElementById('section-compras');
@@ -206,12 +211,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         .select('id');
       if (updateErr) {
         btn.disabled = false;
-        alert('Error al actualizar: ' + updateErr.message);
+        notify('Error al actualizar: ' + updateErr.message, 'error');
         return;
       }
       if (!updated?.length) {
         btn.disabled = false;
-        alert('No se pudo marcar como completado. Comprueba que tu usuario está en la lista de administradores (admin_users).');
+        notify('No se pudo marcar como completado. Comprueba permisos (admin_users).', 'error');
         return;
       }
       const card = btn.closest('.order-card');
@@ -226,32 +231,54 @@ document.addEventListener('DOMContentLoaded', async () => {
       const phone = btn.dataset.phone || '';
       const msg = btn.dataset.msg || '';
       if (!id) return;
-      if (!confirm('¿Cancelar este pedido? Se abrirá WhatsApp para que le expliques al cliente.')) return;
+      const ok = window.UI?.confirm
+        ? await UI.confirm({
+            title: 'Cancelar pedido',
+            message: '¿Cancelar este pedido? Se devolverá el stock y se notificará el motivo al cliente.',
+            confirmText: 'Cancelar pedido',
+            cancelText: 'Volver',
+          })
+        : confirm('¿Cancelar este pedido?');
+      if (!ok) return;
+
+      const reason = window.UI?.promptReason
+        ? await UI.promptReason({
+            title: 'Motivo de cancelación',
+            message: 'Este motivo se mostrará al cliente.',
+            placeholder: 'Ej: No hay stock disponible / Transferencia no recibida / Error en datos…',
+            confirmText: 'Guardar y cancelar',
+            cancelText: 'Volver',
+            minLen: 5,
+          })
+        : (prompt('Motivo de cancelación (se mostrará al cliente):') || '').trim();
+
+      if (!reason) return;
       btn.disabled = true;
       const stockOk = await restoreStockForOrder(id);
       if (!stockOk) {
         btn.disabled = false;
-        alert('No se pudo devolver el stock de este pedido. Revisa permisos o datos del pedido.');
+        notify('No se pudo devolver el stock de este pedido. Revisa permisos o datos.', 'error');
         return;
       }
       const { data: updated, error: updateErr } = await supabase
         .from('orders')
-        .update({ status: 'cancelado', updated_at: new Date().toISOString() })
+        .update({ status: 'cancelado', cancel_reason: reason, updated_at: new Date().toISOString() })
         .eq('id', id)
         .select('id');
       if (updateErr) {
         btn.disabled = false;
-        alert('Error al cancelar: ' + updateErr.message);
+        notify('Error al cancelar: ' + updateErr.message, 'error');
         return;
       }
       if (!updated?.length) {
         btn.disabled = false;
-        alert('No se pudo cancelar el pedido.');
+        notify('No se pudo cancelar el pedido.', 'error');
         return;
       }
       const card = btn.closest('.order-card');
       if (card) card.remove();
-      const whatsappUrl = getWhatsAppUrl(phone, msg);
+      const msgFull = msg + (reason ? `\n\nMotivo: ${reason}` : '');
+      const whatsappUrl = getWhatsAppUrl(phone, msgFull);
       if (whatsappUrl) window.open(whatsappUrl, '_blank', 'noopener');
       location.reload();
     };
@@ -301,7 +328,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
     if (error) {
       console.error('Error subiendo imagen', error);
-      alert('Error al subir una imagen: ' + error.message);
+      notify('Error al subir una imagen: ' + error.message, 'error');
       return null;
     }
     const { data: publicData } = supabase.storage
@@ -385,13 +412,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (id) {
       const { error: err } = await supabase.from('products').update(payload).eq('id', id);
       if (err) {
-        alert('Error al actualizar: ' + err.message);
+        notify('Error al actualizar: ' + err.message, 'error');
         return;
       }
     } else {
       const { error: err } = await supabase.from('products').insert(payload);
       if (err) {
-        alert('Error al crear: ' + err.message);
+        notify('Error al crear: ' + err.message, 'error');
         return;
       }
     }

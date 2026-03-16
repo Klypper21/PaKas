@@ -110,6 +110,10 @@
           <input type="checkbox" id="delivery-checkbox">
           <span>Envío a domicilio (+150 CUP)</span>
         </label>
+        <div id="pickup-info" class="pickup-info">
+          <p><strong>Recogida en tienda:</strong> Puedes pasar a recoger tu pedido en nuestra tienda.</p>
+          <p class="pickup-muted">Dirección: <strong>PaKas</strong> · Horario: 9:00–18:00</p>
+        </div>
         <div id="delivery-address-wrap" class="hidden">
           <label for="delivery-address">Dirección de entrega</label>
           <textarea id="delivery-address" rows="3" placeholder="Calle, número, edificio, piso, municipio..."></textarea>
@@ -126,6 +130,45 @@
       <div class="modal-actions">
         <button id="btn-cancel-order" class="btn btn-outline">Cancelar</button>
         <button id="btn-confirm-order" class="btn btn-primary">Confirmar pedido (pago pendiente)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal producto (detalle) -->
+  <div id="product-modal" class="product-modal hidden">
+    <div class="product-modal-backdrop"></div>
+    <div class="product-modal-content">
+      <button class="product-modal-close" aria-label="Cerrar">&times;</button>
+      <div class="product-modal-body">
+        <div class="product-modal-gallery">
+          <div class="product-modal-main-img">
+            <img id="modal-main-img" src="" alt="">
+          </div>
+          <div id="modal-thumbs" class="product-modal-thumbs"></div>
+        </div>
+        <div class="product-modal-info">
+          <h2 id="modal-title"></h2>
+          <p id="modal-category" class="product-modal-category"></p>
+          <div id="modal-rating" class="product-modal-rating"></div>
+          <p id="modal-description" class="product-modal-desc"></p>
+          <p id="modal-price" class="product-modal-price"></p>
+          <p id="modal-stock" class="product-modal-stock"></p>
+          <button id="modal-add-cart" class="btn btn-primary btn-block">Añadir al carrito</button>
+          <section class="product-modal-reviews">
+            <h3>Reseñas</h3>
+            <div id="modal-review-form" class="review-form">
+              <p class="review-form-hint" id="review-login-hint">Inicia sesión para escribir una reseña.</p>
+              <div id="review-form-fields" class="hidden">
+                <div class="review-stars-input" id="review-stars-input">
+                  <span data-value="1">★</span><span data-value="2">★</span><span data-value="3">★</span><span data-value="4">★</span><span data-value="5">★</span>
+                </div>
+                <textarea id="review-comment" placeholder="Escribe tu reseña (opcional)" rows="3"></textarea>
+                <button id="review-submit" class="btn btn-primary btn-sm">Enviar reseña</button>
+              </div>
+            </div>
+            <div id="modal-reviews-list" class="reviews-list"></div>
+          </section>
+        </div>
       </div>
     </div>
   </div>

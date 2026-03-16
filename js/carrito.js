@@ -15,6 +15,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const deliveryCheckbox = document.getElementById('delivery-checkbox');
   const deliveryAddressWrap = document.getElementById('delivery-address-wrap');
   const deliveryAddress = document.getElementById('delivery-address');
+  const pickupInfo = document.getElementById('pickup-info');
+
+  const notify = (msg, type = 'info') => {
+    if (window.UI?.toast) UI.toast(msg, type);
+    else console.log(type.toUpperCase() + ':', msg);
+  };
 
   function getSubtotal() {
     const cart = Cart.get();
@@ -43,30 +49,66 @@ document.addEventListener('DOMContentLoaded', () => {
     const total = getSubtotal();
     document.getElementById('cart-total').textContent = total.toFixed(2);
 
-    cartItems.innerHTML = cart.map(item => `
-      <div class="cart-item">
-        <img src="${item.image_url || 'https://placehold.co/80x100/1a1a2e/eaeaea?text=Img'}" alt="">
-        <div class="details">
-          <h3>${item.name}</h3>
-          <p>${parseFloat(item.price).toFixed(2)} CUP x ${item.quantity}</p>
-        </div>
-        <p>${(parseFloat(item.price) * item.quantity).toFixed(2)} CUP</p>
-        <button class="remove" onclick="removeFromCart('${item.id}')">Eliminar</button>
-      </div>
-    `).join('');
+    cartItems.innerHTML = cart
+      .map((item) => {
+        const unit = parseFloat(item.price) || 0;
+        const qty = Number(item.quantity) || 0;
+        const img = item.image_url || 'https://placehold.co/80x100/1a1a2e/eaeaea?text=Img';
+        return `
+          <div class="order-product cart-product" data-product-id="${item.id}">
+            <img src="${img}" alt="">
+            <div class="details">
+              <h3>${item.name}</h3>
+              <p>${unit.toFixed(2)} CUP x ${qty}</p>
+            </div>
+            <div class="cart-product__right">
+              <p>${(unit * qty).toFixed(2)} CUP</p>
+              <button class="remove" type="button" data-remove-id="${item.id}">Eliminar</button>
+            </div>
+          </div>
+        `;
+      })
+      .join('');
   }
 
-  window.removeFromCart = (id) => {
-    Cart.remove(id);
-    renderCart();
-  };
+  cartItems?.addEventListener('click', (e) => {
+    const rm = e.target.closest('button.remove');
+    if (rm) {
+      const id = rm.dataset.removeId;
+      if (!id) return;
+      Cart.remove(id);
+      renderCart();
+      notify('Producto eliminado del carrito', 'info');
+      return;
+    }
+    const row = e.target.closest('.cart-product');
+    if (row) {
+      const id = row.dataset.productId;
+      if (id) openProductModal(id);
+    }
+  });
 
-  deliveryCheckbox?.addEventListener('change', () => {
+  async function prefillAddressIfPossible() {
+    try {
+      const user = await Auth.getUser();
+      if (!user) return;
+      const metaAddr = (user.user_metadata?.address || '').trim();
+      if (deliveryAddress && !deliveryAddress.value.trim() && metaAddr) {
+        deliveryAddress.value = metaAddr;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  deliveryCheckbox?.addEventListener('change', async () => {
     if (deliveryCheckbox.checked) {
+      pickupInfo?.classList.add('hidden');
       deliveryAddressWrap?.classList.remove('hidden');
+      await prefillAddressIfPossible();
     } else {
       deliveryAddressWrap?.classList.add('hidden');
-      if (deliveryAddress) deliveryAddress.value = '';
+      pickupInfo?.classList.remove('hidden');
     }
     updateModalTotals();
   });
@@ -83,7 +125,9 @@ document.addEventListener('DOMContentLoaded', () => {
     transferRef.value = '';
     if (deliveryCheckbox) deliveryCheckbox.checked = false;
     if (deliveryAddressWrap) deliveryAddressWrap.classList.add('hidden');
-    if (deliveryAddress) deliveryAddress.value = '';
+    if (pickupInfo) pickupInfo.classList.remove('hidden');
+    // Mantener la última dirección escrita, pero autollenar si está vacío
+    if (deliveryAddress && !deliveryAddress.value.trim()) await prefillAddressIfPossible();
     updateModalTotals();
     modal.classList.remove('hidden');
   });
@@ -95,7 +139,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!user || !supabase) return;
     const profile = await Auth.getProfile(user.id);
     if (!profile?.full_name?.trim() || !profile?.phone?.trim()) {
-      alert('Completa tu perfil (nombre y teléfono) antes de realizar el pedido.');
+      notify('Completa tu perfil (nombre y teléfono) antes de realizar el pedido.', 'warning');
       return;
     }
     const cart = Cart.get();
@@ -104,7 +148,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const withDelivery = deliveryCheckbox?.checked === true;
     const address = (deliveryAddress?.value || '').trim();
     if (withDelivery && !address) {
-      alert('Indica la dirección de entrega para el envío a domicilio.');
+      notify('Indica la dirección de entrega para el envío a domicilio.', 'warning');
       return;
     }
     const total = subtotal + (withDelivery ? DELIVERY_COST_CUP : 0);
@@ -129,7 +173,7 @@ document.addEventListener('DOMContentLoaded', () => {
       .single();
 
     if (orderErr) {
-      alert('Error al crear pedido: ' + orderErr.message);
+      notify('Error al crear pedido: ' + orderErr.message, 'error');
       return;
     }
 
@@ -142,7 +186,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const { error: itemsErr } = await supabase.from('order_items').insert(items);
     if (itemsErr) {
-      alert('Error al guardar items: ' + itemsErr.message);
+      notify('Error al guardar items: ' + itemsErr.message, 'error');
       return;
     }
 
@@ -152,7 +196,7 @@ document.addEventListener('DOMContentLoaded', () => {
       .select('product_id, quantity')
       .eq('order_id', order.id);
     if (stockErr) {
-      alert('Pedido creado pero hubo un error reservando el stock: ' + stockErr.message);
+      notify('Pedido creado pero hubo un error reservando el stock: ' + stockErr.message, 'warning');
     } else if (stockItems?.length) {
       const byProduct = {};
       for (const i of stockItems) {
@@ -177,9 +221,220 @@ document.addEventListener('DOMContentLoaded', () => {
 
     Cart.clear();
     modal.classList.add('hidden');
-    alert('Pedido creado. Estado: Pago pendiente. Realiza la transferencia y espera la confirmación.');
-    location.href = 'pedidos.html';
+    if (window.UI?.openModal) {
+      UI.openModal({
+        title: 'Pedido creado',
+        html: `<p class="ui-modal__text">Estado: <strong>Pago pendiente</strong>. Realiza la transferencia y espera la confirmación.</p>`,
+        actions: [
+          { label: 'Ver mis pedidos', variant: 'primary', onClick: () => (location.href = 'pedidos.html') },
+        ],
+      });
+    } else {
+      notify('Pedido creado. Estado: Pago pendiente.', 'success');
+      location.href = 'pedidos.html';
+    }
   });
 
   renderCart();
+
+  // -------- Modal de producto (detalle) en carrito --------
+  async function openProductModal(productId) {
+    const modalEl = document.getElementById('product-modal');
+    if (!modalEl || !supabase) return;
+    const mainImg = document.getElementById('modal-main-img');
+    const thumbs = document.getElementById('modal-thumbs');
+    const title = document.getElementById('modal-title');
+    const category = document.getElementById('modal-category');
+    const ratingEl = document.getElementById('modal-rating');
+    const desc = document.getElementById('modal-description');
+    const priceEl = document.getElementById('modal-price');
+    const stockEl = document.getElementById('modal-stock');
+    const addCartBtn = document.getElementById('modal-add-cart');
+    const reviewLoginHint = document.getElementById('review-login-hint');
+    const reviewFormFields = document.getElementById('review-form-fields');
+    const reviewsList = document.getElementById('modal-reviews-list');
+
+    modalEl.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+
+    const { data: product } = await supabase.from('products').select('*').eq('id', productId).single();
+    if (!product) {
+      closeProductModal();
+      return;
+    }
+
+    const mainUrl = product.image_url || 'https://placehold.co/400x500/1a1a2e/eaeaea?text=Producto';
+    const extraImages = Array.isArray(product.extra_images)
+      ? product.extra_images
+      : typeof product.extra_images === 'string'
+      ? (() => {
+          try {
+            return JSON.parse(product.extra_images) || [];
+          } catch {
+            return [];
+          }
+        })()
+      : [];
+    const allImages = [mainUrl, ...extraImages.filter((u) => u && u !== mainUrl)];
+
+    if (mainImg) {
+      mainImg.src = allImages[0];
+      mainImg.alt = product.name;
+    }
+    if (thumbs) {
+      thumbs.innerHTML = allImages
+        .map(
+          (url, i) =>
+            `<button class="thumb ${i === 0 ? 'active' : ''}" type="button" data-index="${i}"><img src="${url}" alt=""></button>`
+        )
+        .join('');
+      thumbs.querySelectorAll('.thumb').forEach((t) => {
+        t.onclick = () => {
+          thumbs.querySelectorAll('.thumb').forEach((x) => x.classList.remove('active'));
+          t.classList.add('active');
+          if (mainImg) mainImg.src = t.querySelector('img').src;
+        };
+      });
+    }
+
+    if (title) title.textContent = product.name;
+    if (category) category.textContent = product.category || '';
+    if (desc) desc.textContent = product.description || 'Sin descripción.';
+    if (priceEl) priceEl.textContent = (parseFloat(product.price) || 0).toFixed(2) + ' CUP';
+    if (stockEl) {
+      const inStock = (product.stock ?? 10) > 0;
+      stockEl.textContent = inStock ? `En stock (${product.stock})` : 'Agotado';
+      stockEl.className = 'product-modal-stock ' + (inStock ? '' : 'out-of-stock');
+    }
+
+    if (addCartBtn) {
+      addCartBtn.disabled = (product.stock ?? 10) <= 0;
+      addCartBtn.onclick = (ev) => {
+        ev.preventDefault();
+        Cart.add({ id: product.id, name: product.name, price: parseFloat(product.price) || 0, image_url: mainUrl }, 1);
+        if (typeof updateCartCount === 'function') updateCartCount();
+        notify('Producto añadido al carrito', 'success');
+      };
+    }
+
+    const { data: reviews } = await supabase
+      .from('product_reviews')
+      .select('*')
+      .eq('product_id', productId)
+      .order('created_at', { ascending: false });
+
+    const avg =
+      reviews?.length > 0 ? reviews.reduce((s, r) => s + (r.rating || 0), 0) / reviews.length : 0;
+    const rounded = Math.round(avg * 10) / 10;
+    if (ratingEl) {
+      ratingEl.innerHTML = `
+        <span class="stars-display" title="${rounded} de 5">
+          ${renderStars(rounded)}
+        </span>
+        <span class="rating-count">${reviews?.length || 0} ${reviews?.length === 1 ? 'reseña' : 'reseñas'}</span>
+      `;
+    }
+
+    const user = Auth.supabase ? await Auth.getUser() : null;
+    if (user) {
+      reviewLoginHint?.classList.add('hidden');
+      reviewFormFields?.classList.remove('hidden');
+    } else {
+      reviewLoginHint?.classList.remove('hidden');
+      reviewFormFields?.classList.add('hidden');
+    }
+
+    // Reutiliza el envío de reseñas de tienda (simple) si existe UI
+    initReviewForm(productId);
+
+    if (reviewsList) {
+      reviewsList.innerHTML = (reviews || [])
+        .map(
+          (r) => `
+        <div class="review-item">
+          <div class="review-header">
+            <span class="review-author">${escapeHtml(r.user_name || 'Usuario')}</span>
+            <span class="stars-display">${renderStars(r.rating)}</span>
+            <span class="review-date">${formatDate(r.created_at)}</span>
+          </div>
+          ${r.comment ? `<p class="review-comment">${escapeHtml(r.comment)}</p>` : ''}
+        </div>
+      `
+        )
+        .join('');
+      if (!reviews?.length) reviewsList.innerHTML = '<p class="no-reviews">Aún no hay reseñas.</p>';
+    }
+  }
+
+  function closeProductModal() {
+    const modalEl = document.getElementById('product-modal');
+    if (modalEl) modalEl.classList.add('hidden');
+    document.body.style.overflow = '';
+  }
+
+  document.querySelector('#product-modal .product-modal-backdrop')?.addEventListener('click', closeProductModal);
+  document.querySelector('#product-modal .product-modal-close')?.addEventListener('click', closeProductModal);
+  document.addEventListener('keydown', (e) => {
+    const modalEl = document.getElementById('product-modal');
+    if (e.key === 'Escape' && modalEl && !modalEl.classList.contains('hidden')) closeProductModal();
+  });
+
+  function renderStars(avg) {
+    const n = Math.round(Number(avg) || 0);
+    return '<span class="star filled">★</span>'.repeat(n) + '<span class="star">☆</span>'.repeat(5 - n);
+  }
+  function formatDate(iso) {
+    try {
+      const d = new Date(iso);
+      return d.toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
+    } catch {
+      return '';
+    }
+  }
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str == null ? '' : String(str);
+    return div.innerHTML;
+  }
+
+  let selectedRating = 0;
+  function initReviewForm(productId) {
+    selectedRating = 0;
+    const starsInput = document.getElementById('review-stars-input');
+    const ta = document.getElementById('review-comment');
+    const btn = document.getElementById('review-submit');
+    if (ta) ta.value = '';
+    starsInput?.querySelectorAll('span[data-value]')?.forEach((s) => s.classList.remove('active'));
+
+    if (starsInput) {
+      starsInput.onclick = (e) => {
+        const span = e.target.closest('span[data-value]');
+        if (!span) return;
+        selectedRating = parseInt(span.dataset.value, 10);
+        starsInput
+          .querySelectorAll('span[data-value]')
+          .forEach((s) => s.classList.toggle('active', parseInt(s.dataset.value, 10) <= selectedRating));
+      };
+    }
+    if (btn) {
+      btn.onclick = async () => {
+        if (!selectedRating) return notify('Selecciona una calificación de 1 a 5 estrellas.', 'warning');
+        const user = await Auth.getUser();
+        if (!user) return notify('Debes iniciar sesión para enviar una reseña.', 'warning');
+        const profile = await Auth.getProfile(user.id);
+        if (!profile?.full_name?.trim() || !profile?.phone?.trim()) {
+          return notify('Completa tu perfil (nombre y teléfono) para poder publicar reseñas.', 'warning');
+        }
+        const user_name = profile.full_name.trim();
+        const comment = (ta?.value || '').trim();
+        const { error } = await supabase.from('product_reviews').upsert(
+          { product_id: productId, user_id: user.id, user_name, rating: selectedRating, comment: comment || null },
+          { onConflict: 'product_id,user_id' }
+        );
+        if (error) return notify('Error al enviar la reseña: ' + error.message, 'error');
+        notify('Reseña enviada.', 'success');
+        openProductModal(productId);
+      };
+    }
+  }
 });

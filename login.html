@@ -107,9 +107,51 @@
       const { data, error } = await Auth.register((identifier || '').trim(), password, (name || '').trim(), address || '');
       if (error) { err.textContent = error; return; }
       if (data?.user) {
-        const { error: profileErr } = await Auth.ensureProfile({ full_name: (name || '').trim(), phone: (phone || '').trim() });
+        const { error: profileErr } = await Auth.ensureProfile({
+          full_name: (name || '').trim(),
+          phone: (phone || '').trim(),
+          address: (address || '').trim(),
+        });
         if (profileErr) { err.textContent = profileErr; return; }
       }
+      const cleanIdentifier = (identifier || '').trim();
+      const isEmail = cleanIdentifier.includes('@');
+
+      if (isEmail) {
+        // Registro con correo: pedir verificación antes de entrar.
+        if (window.UI?.openModal) {
+          UI.openModal({
+            title: 'Verifica tu correo',
+            html: `
+              <p class="ui-modal__text">
+                Te enviamos un correo a <strong>${cleanIdentifier.replace(/</g, '&lt;')}</strong>.
+                Abre el enlace para activar tu cuenta y luego inicia sesión.
+              </p>
+              <p class="ui-modal__text" style="margin-bottom:0">
+                Si no lo ves, revisa <strong>spam</strong> o <strong>promociones</strong>.
+              </p>
+            `,
+            actions: [
+              {
+                label: 'Entendido',
+                variant: 'primary',
+                onClick: () => {
+                  // Cambiar a pestaña de login
+                  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                  document.querySelectorAll('.auth-form').forEach(f => f.classList.add('hidden'));
+                  const loginTab = document.querySelector('.tab[data-tab="login"]');
+                  if (loginTab) loginTab.classList.add('active');
+                  document.getElementById('login-form')?.classList.remove('hidden');
+                }
+              }
+            ]
+          });
+        }
+        UI?.toast?.('Cuenta creada. Verifica tu correo para continuar.', 'success');
+        form.reset();
+        return;
+      }
+
       const redirect = new URLSearchParams(location.search).get('redirect');
       if (await Auth.isAdmin()) location.href = 'admin.html';
       else location.href = redirect || 'index.html';

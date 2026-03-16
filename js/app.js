@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initUserDropdown();
   initSearchRedirect();
   initNavbarScrollHide();
+  initSwipeTabs();
   if (Auth.supabase) {
     initAuthButtons();
     updateNavAuth();
@@ -24,6 +25,218 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 });
+
+// UI: notificaciones y modales consistentes (evita alerts/confirm del sistema)
+(() => {
+  if (window.UI) return;
+
+  function ensureToastRoot() {
+    let root = document.getElementById('toast-root');
+    if (root) return root;
+    root = document.createElement('div');
+    root.id = 'toast-root';
+    root.className = 'toast-root';
+    document.body.appendChild(root);
+    return root;
+  }
+
+  function toast(message, type = 'info', opts = {}) {
+    const root = ensureToastRoot();
+    const el = document.createElement('div');
+    const ttl = typeof opts.durationMs === 'number' ? opts.durationMs : 2600;
+    el.className = `toast toast--${type}`;
+    el.setAttribute('role', 'status');
+    el.setAttribute('aria-live', 'polite');
+    el.innerHTML = `
+      <div class="toast__body">${escapeHtml(message)}</div>
+      <button type="button" class="toast__close" aria-label="Cerrar">&times;</button>
+    `;
+    root.appendChild(el);
+    const close = () => {
+      el.classList.add('toast--hide');
+      setTimeout(() => el.remove(), 180);
+    };
+    el.querySelector('.toast__close')?.addEventListener('click', close);
+    if (ttl > 0) setTimeout(close, ttl);
+  }
+
+  function ensureModalRoot() {
+    let root = document.getElementById('ui-modal-root');
+    if (root) return root;
+    root = document.createElement('div');
+    root.id = 'ui-modal-root';
+    document.body.appendChild(root);
+    return root;
+  }
+
+  function openModal({ title = '', html = '', actions = [], closeOnBackdrop = true } = {}) {
+    const root = ensureModalRoot();
+    const wrap = document.createElement('div');
+    wrap.className = 'modal ui-modal';
+    wrap.innerHTML = `
+      <div class="modal-backdrop ui-modal__backdrop"></div>
+      <div class="modal-content ui-modal__content">
+        ${title ? `<h2 class="ui-modal__title">${escapeHtml(title)}</h2>` : ''}
+        <div class="ui-modal__body">${html}</div>
+        <div class="ui-modal__actions"></div>
+      </div>
+    `;
+    const backdrop = wrap.querySelector('.ui-modal__backdrop');
+    const actionsWrap = wrap.querySelector('.ui-modal__actions');
+    const close = () => {
+      wrap.remove();
+      document.body.style.overflow = '';
+    };
+    if (closeOnBackdrop && backdrop) backdrop.addEventListener('click', close);
+    document.addEventListener(
+      'keydown',
+      (e) => {
+        if (e.key === 'Escape') close();
+      },
+      { once: true }
+    );
+
+    (actions || []).forEach((a) => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = `btn ${a.variant === 'primary' ? 'btn-primary' : 'btn-outline'}`;
+      btn.textContent = a.label || 'OK';
+      btn.addEventListener('click', async () => {
+        try {
+          const res = await a.onClick?.({ close, wrap });
+          if (a.closeOnClick !== false) close();
+          return res;
+        } catch (err) {
+          console.error(err);
+          toast('Ocurrió un error. Intenta de nuevo.', 'error');
+        }
+      });
+      actionsWrap?.appendChild(btn);
+    });
+
+    root.appendChild(wrap);
+    document.body.style.overflow = 'hidden';
+    return { close, wrap };
+  }
+
+  function confirm({ title = 'Confirmar', message = '¿Seguro?', confirmText = 'Confirmar', cancelText = 'Cancelar' } = {}) {
+    return new Promise((resolve) => {
+      openModal({
+        title,
+        html: `<p class="ui-modal__text">${escapeHtml(message)}</p>`,
+        actions: [
+          { label: cancelText, variant: 'outline', onClick: () => resolve(false) },
+          { label: confirmText, variant: 'primary', onClick: () => resolve(true) },
+        ],
+      });
+    });
+  }
+
+  function promptReason({
+    title = 'Motivo',
+    message = 'Escribe el motivo.',
+    placeholder = 'Escribe aquí…',
+    confirmText = 'Enviar',
+    cancelText = 'Cancelar',
+    minLen = 3,
+  } = {}) {
+    return new Promise((resolve) => {
+      const { wrap } = openModal({
+        title,
+        html: `
+          <p class="ui-modal__text">${escapeHtml(message)}</p>
+          <textarea class="ui-modal__textarea" id="ui-modal-textarea" rows="4" placeholder="${escapeAttr(
+            placeholder
+          )}"></textarea>
+          <p class="ui-modal__error error-msg" style="margin-top:0.5rem"></p>
+        `,
+        actions: [
+          { label: cancelText, variant: 'outline', onClick: () => resolve(null) },
+          {
+            label: confirmText,
+            variant: 'primary',
+            closeOnClick: false,
+            onClick: ({ close }) => {
+              const ta = wrap.querySelector('#ui-modal-textarea');
+              const err = wrap.querySelector('.ui-modal__error');
+              const value = (ta?.value || '').trim();
+              if (value.length < minLen) {
+                if (err) err.textContent = `Escribe al menos ${minLen} caracteres.`;
+                return;
+              }
+              resolve(value);
+              close();
+            },
+          },
+        ],
+      });
+
+      setTimeout(() => wrap.querySelector('#ui-modal-textarea')?.focus(), 50);
+    });
+  }
+
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str == null ? '' : String(str);
+    return div.innerHTML;
+  }
+  function escapeAttr(str) {
+    return String(str == null ? '' : str)
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  window.UI = { toast, openModal, confirm, promptReason };
+})();
+
+function initSwipeTabs() {
+  // Soporta .auth-tabs (login) y .admin-tabs (admin) con botones dentro.
+  const candidates = Array.from(document.querySelectorAll('.auth-tabs, .admin-tabs'));
+  if (!candidates.length) return;
+
+  const isMobile = () => window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+
+  candidates.forEach((tabsWrap) => {
+    let startX = 0;
+    let startY = 0;
+    let tracking = false;
+
+    tabsWrap.addEventListener(
+      'touchstart',
+      (e) => {
+        if (!isMobile()) return;
+        if (!e.touches || e.touches.length !== 1) return;
+        tracking = true;
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+      },
+      { passive: true }
+    );
+
+    tabsWrap.addEventListener(
+      'touchend',
+      (e) => {
+        if (!tracking || !isMobile()) return;
+        tracking = false;
+        const t = e.changedTouches?.[0];
+        if (!t) return;
+        const dx = t.clientX - startX;
+        const dy = t.clientY - startY;
+        if (Math.abs(dx) < 55 || Math.abs(dx) < Math.abs(dy) * 1.2) return;
+
+        const tabs = Array.from(tabsWrap.querySelectorAll('button, .tab')).filter((b) =>
+          b.classList.contains('tab') || b.classList.contains('admin-tab') || b.tagName === 'BUTTON'
+        );
+        const activeIdx = Math.max(0, tabs.findIndex((b) => b.classList.contains('active')));
+        const nextIdx = dx < 0 ? activeIdx + 1 : activeIdx - 1; // swipe izquierda -> siguiente
+        const next = tabs[nextIdx];
+        if (next) next.click();
+      },
+      { passive: true }
+    );
+  });
+}
 
 function initAuthButtons() {
   const btnLogin = document.getElementById('btn-login');

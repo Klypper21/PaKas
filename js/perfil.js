@@ -18,6 +18,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (form) {
     form.full_name.value = (profile?.full_name || user.user_metadata?.full_name || '').trim();
     form.phone.value = (profile?.phone || '').trim();
+    if (form.address) {
+      form.address.value = (profile?.address || user.user_metadata?.address || '').trim();
+    }
   }
 
   if (form) {
@@ -27,7 +30,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       errEl.textContent = '';
       const full_name = (form.full_name.value || '').trim();
       const phone = (form.phone.value || '').trim();
-      const { error } = await Auth.ensureProfile({ full_name, phone });
+      const address = (form.address?.value || '').trim();
+      const { error } = await Auth.ensureProfile({ full_name, phone, address });
       if (error) {
         errEl.textContent = error;
         return;
