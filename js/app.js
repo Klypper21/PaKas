@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initHamburgerMenu();
   initUserDropdown();
   initSearchRedirect();
+  initNavbarScrollHide();
   if (Auth.supabase) {
     initAuthButtons();
     updateNavAuth();
@@ -124,6 +125,43 @@ function initSearchRedirect() {
       location.href = q ? `index.html?q=${encodeURIComponent(q)}` : 'index.html';
     }
   });
+}
+
+function initNavbarScrollHide() {
+  const headerBar = document.getElementById('header-bar');
+  if (!headerBar) return;
+  const HIDE_THRESHOLD = 160;
+  const SHOW_THRESHOLD = 50;
+  const SCROLL_UP_DELTA = 55;
+  let lastScrollY = window.scrollY;
+  let scrollYWhenScrolled = 0;
+  let ticking = false;
+
+  function update() {
+    const scrollY = window.scrollY;
+    const isScrolled = headerBar.classList.contains('header-bar--scrolled');
+    if (isScrolled) {
+      const nearTop = scrollY <= SHOW_THRESHOLD;
+      const scrolledUpEnough = scrollY <= scrollYWhenScrolled - SCROLL_UP_DELTA;
+      if (nearTop || scrolledUpEnough) {
+        headerBar.classList.remove('header-bar--scrolled');
+      }
+    } else {
+      if (scrollY > HIDE_THRESHOLD && scrollY > lastScrollY) {
+        headerBar.classList.add('header-bar--scrolled');
+        scrollYWhenScrolled = scrollY;
+      }
+    }
+    lastScrollY = scrollY;
+    ticking = false;
+  }
+
+  window.addEventListener('scroll', () => {
+    if (!ticking) {
+      requestAnimationFrame(update);
+      ticking = true;
+    }
+  }, { passive: true });
 }
 
 function updateNavAuth() {

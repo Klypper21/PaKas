@@ -7,10 +7,11 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+  <header class="header-bar" id="header-bar">
   <nav class="navbar">
     <a href="index.html" class="logo">
       <picture>
-        <source media="(max-width: 768px)" srcset="img/logo paka.png">
+        <source media="(max-width: 768px)" srcset="img/logo-paka.png">
         <img src="img/pakas name.png" alt="PaKas">
       </picture>
     </a>
@@ -72,6 +73,41 @@
     </div>
   </nav>
 
+  <!-- Barra de categorías fija + Ordenar por (en barra solo al buscar) -->
+  <div class="category-bar" aria-label="Categorías y orden">
+    <button type="button" class="category-bar-pleca category-bar-pleca--left" aria-label="Deslizar categorías a la izquierda" title="Deslizar a la izquierda">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
+    <div class="category-scroll-wrap">
+      <div class="category-scroll" id="search-tags">
+        <!-- Ordenar por: solo visible al buscar; dos plequitas que abren menú -->
+        <div class="category-sort-wrap" id="category-sort-wrap" aria-hidden="true">
+          <button type="button" class="category-sort-trigger" id="sort-trigger" aria-label="Ordenar resultados" aria-haspopup="true" aria-expanded="false" title="Ordenar por">
+            <svg class="category-sort-arrow" xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+            <svg class="category-sort-arrow" xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="category-sort-dropdown" id="sort-dropdown" role="menu" aria-label="Opciones de orden">
+            <button type="button" role="menuitemradio" data-sort="relevance" class="category-sort-option">Más relevante</button>
+            <button type="button" role="menuitemradio" data-sort="price_asc" class="category-sort-option">Precio: más barato</button>
+            <button type="button" role="menuitemradio" data-sort="price_desc" class="category-sort-option">Precio: más caro</button>
+            <button type="button" role="menuitemradio" data-sort="rating_desc" class="category-sort-option">Mejor valorado</button>
+            <button type="button" role="menuitemradio" data-sort="newest" class="category-sort-option">Más recientes</button>
+          </div>
+        </div>
+        <button type="button" class="category-chip active" data-category="">Todo</button>
+        <button type="button" class="category-chip" data-category="hombre">Hombre</button>
+        <button type="button" class="category-chip" data-category="mujer">Mujer</button>
+        <button type="button" class="category-chip" data-category="unisex">Unisex</button>
+        <button type="button" class="category-chip" data-category="oferta">Ofertas</button>
+        <button type="button" class="category-chip" data-category="nuevo">Novedades</button>
+      </div>
+    </div>
+    <button type="button" class="category-bar-pleca category-bar-pleca--right" aria-label="Deslizar categorías a la derecha" title="Deslizar a la derecha">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+    </button>
+  </div>
+  </header>
+
   <!-- Menú inferior tipo app (solo móvil, solo iconos) -->
   <nav class="nav-bottom" aria-label="Navegación principal">
     <a href="index.html" class="nav-bottom-link" aria-label="Inicio">
@@ -92,31 +128,8 @@
     </a>
   </nav>
 
-  <!-- Barra de categorías fija + Ordenar por -->
-  <div class="category-bar" aria-label="Categorías y orden">
-    <div class="category-scroll" id="search-tags">
-      <button type="button" class="category-chip active" data-category="">Todo</button>
-      <button type="button" class="category-chip" data-category="hombre">Hombre</button>
-      <button type="button" class="category-chip" data-category="mujer">Mujer</button>
-      <button type="button" class="category-chip" data-category="unisex">Unisex</button>
-      <button type="button" class="category-chip" data-category="oferta">Ofertas</button>
-      <button type="button" class="category-chip" data-category="nuevo">Novedades</button>
-    </div>
-    <label class="category-bar-sort">
-      <span class="category-bar-sort-label"></span>
-      <select id="sort-order" class="category-bar-sort-select">
-        <option value="relevance">Más relevante</option>
-        <option value="price_asc">Precio: más barato</option>
-        <option value="price_desc">Precio: más caro</option>
-        <option value="rating_desc">Mejor valorado</option>
-        <option value="newest">Más recientes</option>
-      </select>
-    </label>
-  </div>
-
   <main class="shop-container">
     <h1>Nuestra colección</h1>
-
     <div id="products-grid" class="products-grid"></div>
   </main>
 
