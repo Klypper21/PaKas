@@ -90,6 +90,10 @@ body {
   min-height: 72px;
 }
 
+.back-btn-mobile {
+  display: none;
+}
+
 .navbar-search {
   flex: 1;
   max-width: 420px;
@@ -2145,6 +2149,18 @@ body {
     padding: 0.5rem 0.75rem;
     flex-wrap: nowrap;
     min-height: 56px;
+  }
+
+  .navbar--hidden-mobile {
+    display: none;
+  }
+
+  .back-btn-mobile {
+    display: block;
+    color: var(--text);
+    text-decoration: none;
+    font-weight: 500;
+    margin-right: 1rem;
   }
 
   .navbar .logo {
