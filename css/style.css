@@ -798,6 +798,61 @@ body {
   background: linear-gradient(160deg, var(--bg-page) 0%, var(--bg-elevated) 100%);
 }
 
+.password-field {
+  position: relative;
+  width: 100%;
+}
+
+.password-field > input {
+  padding-right: 3.1rem;
+}
+
+.toggle-password {
+  position: absolute;
+  top: 50%;
+  right: 0.85rem;
+  transform: translateY(-50%);
+  width: 2.1rem;
+  height: 2.1rem;
+  border: 1px solid var(--border-light);
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.toggle-password:hover,
+.toggle-password:focus-visible {
+  color: var(--text);
+  border-color: var(--border);
+  background: var(--bg-hover);
+  outline: none;
+}
+
+.toggle-password svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.auth-form .password-field {
+  margin-bottom: 0.9rem;
+}
+
+.auth-form .password-field > input {
+  margin-bottom: 0;
+}
+
+.form-hint {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin: -0.25rem 0 0.9rem;
+}
+
 .auth-card {
   background: var(--bg-card);
   padding: 2.5rem 2.75rem;
@@ -2405,6 +2460,19 @@ body {
   font: inherit;
   position: relative;
   -webkit-tap-highlight-color: transparent;
+}
+
+.nav-bottom-link.is-active::after,
+.nav-bottom-btn.is-active::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--text);
 }
 
 .nav-bottom-link:hover,

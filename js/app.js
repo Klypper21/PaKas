@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initSearchRedirect();
   initNavbarScrollHide();
   initSwipeTabs();
+  initMobileSwipeNav();
   if (Auth.supabase) {
     initAuthButtons();
     updateNavAuth();
@@ -238,6 +239,106 @@ function initSwipeTabs() {
   });
 }
 
+function initMobileSwipeNav() {
+  const isMobile = () =>
+    !!(window.matchMedia && window.matchMedia('(max-width: 768px)').matches);
+
+  const nav = document.querySelector('.nav-bottom');
+  if (!nav) return;
+
+  function isVisible(el) {
+    if (!el) return false;
+    const style = window.getComputedStyle(el);
+    return style.display !== 'none' && style.visibility !== 'hidden';
+  }
+
+  function normalizePath(p) {
+    const clean = (p || '').split('?')[0].split('#')[0];
+    if (!clean) return '';
+    if (clean.endsWith('/')) return 'index.html';
+    return clean.split('/').pop() || clean;
+  }
+
+  function getNavLinks() {
+    const links = Array.from(nav.querySelectorAll('a.nav-bottom-link'));
+    return links.filter((a) => isVisible(a));
+  }
+
+  function getActiveIndex(links) {
+    const current = normalizePath(window.location.pathname);
+    const idx = links.findIndex((a) => normalizePath(a.getAttribute('href')) === current);
+    return idx >= 0 ? idx : 0;
+  }
+
+  function updateActiveDot() {
+    const links = Array.from(nav.querySelectorAll('a.nav-bottom-link'));
+    const current = normalizePath(window.location.pathname);
+    links.forEach((a) => {
+      const isActive = normalizePath(a.getAttribute('href')) === current;
+      a.classList.toggle('is-active', isActive);
+      if (isActive) a.setAttribute('aria-current', 'page');
+      else a.removeAttribute('aria-current');
+    });
+  }
+
+  function shouldIgnoreSwipeTarget(target) {
+    if (!(target instanceof Element)) return false;
+    // Evitar swipes cuando el usuario interactúa con controles o scroll horizontal interno
+    return !!target.closest(
+      'input, textarea, select, button, label, [role="button"], .category-scroll, .search-suggestions, .product-modal, .modal, .product-modal-content, .modal-content'
+    );
+  }
+
+  let startX = 0;
+  let startY = 0;
+  let tracking = false;
+  let startedOnIgnored = false;
+
+  document.addEventListener(
+    'touchstart',
+    (e) => {
+      if (!isMobile()) return;
+      if (!e.touches || e.touches.length !== 1) return;
+      tracking = true;
+      startedOnIgnored = shouldIgnoreSwipeTarget(e.target);
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+    },
+    { passive: true }
+  );
+
+  document.addEventListener(
+    'touchend',
+    (e) => {
+      if (!tracking || !isMobile()) return;
+      tracking = false;
+      if (startedOnIgnored) return;
+      const t = e.changedTouches?.[0];
+      if (!t) return;
+      const dx = t.clientX - startX;
+      const dy = t.clientY - startY;
+
+      // Umbrales: evitar que un scroll vertical dispare navegación
+      if (Math.abs(dx) < 70) return;
+      if (Math.abs(dx) < Math.abs(dy) * 1.35) return;
+
+      const links = getNavLinks();
+      if (links.length < 2) return;
+      const activeIdx = getActiveIndex(links);
+      const nextIdx = dx < 0 ? activeIdx + 1 : activeIdx - 1; // swipe izq -> siguiente
+      const next = links[nextIdx];
+      const href = next?.getAttribute('href');
+      if (!href) return;
+      window.location.href = href;
+    },
+    { passive: true }
+  );
+
+  updateActiveDot();
+  // Exponer un hook para cuando cambie login/perfil en el menú
+  window.__updateMobileNavActiveDot = updateActiveDot;
+}
+
 function initAuthButtons() {
   const btnLogin = document.getElementById('btn-login');
   if (btnLogin) {
@@ -399,6 +500,7 @@ function updateNavAuth() {
       if (bottomLogin) bottomLogin.style.display = 'flex';
       if (bottomUser) bottomUser.style.display = 'none';
     }
+    window.__updateMobileNavActiveDot?.();
   });
 }
 

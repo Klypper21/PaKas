@@ -109,6 +109,14 @@ const Auth = {
     return { error: null };
   },
 
+  async updatePassword(newPassword) {
+    if (!this.supabase) return { error: 'Supabase no configurado' };
+    const pwd = (newPassword || '').trim();
+    if (pwd.length < 6) return { error: 'La contraseña debe tener al menos 6 caracteres' };
+    const { error } = await this.supabase.auth.updateUser({ password: pwd });
+    return { error: error?.message || null };
+  },
+
   async logout() {
     if (this.supabase) await this.supabase.auth.signOut();
     localStorage.removeItem('cart');
