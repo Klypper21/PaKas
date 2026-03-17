@@ -7,15 +7,25 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnCheckout = document.getElementById('btn-checkout');
   const modal = document.getElementById('checkout-modal');
   const modalSubtotal = document.getElementById('modal-subtotal');
+  const modalDelivery = document.getElementById('modal-delivery');
   const modalTotal = document.getElementById('modal-total');
   const orderRef = document.getElementById('order-ref');
   const transferRef = document.getElementById('transfer-reference');
   const btnConfirm = document.getElementById('btn-confirm-order');
   const btnCancel = document.getElementById('btn-cancel-order');
-  const deliveryCheckbox = document.getElementById('delivery-checkbox');
   const deliveryAddressWrap = document.getElementById('delivery-address-wrap');
   const deliveryAddress = document.getElementById('delivery-address');
   const pickupInfo = document.getElementById('pickup-info');
+  const cashSection = document.getElementById('cash-section');
+  const transferSection = document.getElementById('transfer-section');
+  const checkoutError = document.getElementById('checkout-error');
+  const qrImg = document.getElementById('transfer-qr');
+  const bankAccount = document.getElementById('bank-account');
+
+  const payCash = document.getElementById('pay-cash');
+  const payTransfer = document.getElementById('pay-transfer');
+  const deliveryPickup = document.getElementById('delivery-pickup');
+  const deliveryDelivery = document.getElementById('delivery-delivery');
 
   const notify = (msg, type = 'info') => {
     if (window.UI?.toast) UI.toast(msg, type);
@@ -179,12 +189,32 @@ document.addEventListener('DOMContentLoaded', async () => {
     return cart.reduce((acc, i) => acc + parseFloat(i.price) * i.quantity, 0);
   }
 
+  function getSelectedPaymentMethod() {
+    const el = document.querySelector('input[name="payment-method"]:checked');
+    return el?.value || null; // 'cash' | 'transfer' | null
+  }
+
+  function getSelectedDeliveryMethod() {
+    const el = document.querySelector('input[name="delivery-method"]:checked');
+    return el?.value || null; // 'pickup' | 'delivery' | null
+  }
+
   function updateModalTotals() {
     const subtotal = getSubtotal();
-    const withDelivery = deliveryCheckbox?.checked === true;
+    const withDelivery = getSelectedDeliveryMethod() === 'delivery';
     const total = subtotal + (withDelivery ? DELIVERY_COST_CUP : 0);
     if (modalSubtotal) modalSubtotal.textContent = subtotal.toFixed(2);
+    if (modalDelivery) modalDelivery.textContent = (withDelivery ? DELIVERY_COST_CUP : 0).toFixed(2);
     if (modalTotal) modalTotal.textContent = total.toFixed(2);
+
+    // QR: incluye cuenta, monto y concepto
+    const payment = getSelectedPaymentMethod();
+    if (payment === 'transfer' && qrImg) {
+      const acc = (bankAccount?.textContent || '').trim() || '0000 0000 0000 0000';
+      const concept = (orderRef?.textContent || '').trim() || 'EMP';
+      const data = `Cuenta: ${acc}\nMonto: ${total.toFixed(2)} CUP\nConcepto: ${concept}`;
+      qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(data)}`;
+    }
   }
 
   function renderCart() {
@@ -278,26 +308,79 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       const user = await Auth.getUser();
       if (!user) return;
-      const metaAddr = (user.user_metadata?.address || '').trim();
-      if (deliveryAddress && !deliveryAddress.value.trim() && metaAddr) {
-        deliveryAddress.value = metaAddr;
+      const profile = await Auth.getProfile(user.id);
+      const addr = (profile?.address || user.user_metadata?.address || '').trim();
+      if (deliveryAddress) {
+        // Guardamos la dirección sugerida del perfil, pero sin forzarla.
+        deliveryAddress.dataset.profileAddress = addr;
+        // Autollenar solo si el usuario no ha escrito nada aún.
+        if (!deliveryAddress.value.trim() && addr) {
+          deliveryAddress.value = addr;
+        }
+        // Debe ser editable en el modal.
+        deliveryAddress.readOnly = false;
       }
     } catch (e) {
       console.error(e);
     }
   }
 
-  deliveryCheckbox?.addEventListener('change', async () => {
-    if (deliveryCheckbox.checked) {
-      pickupInfo?.classList.add('hidden');
-      deliveryAddressWrap?.classList.remove('hidden');
-      await prefillAddressIfPossible();
-    } else {
-      deliveryAddressWrap?.classList.add('hidden');
-      pickupInfo?.classList.remove('hidden');
-    }
+  function setCheckoutError(msg = '') {
+    if (checkoutError) checkoutError.textContent = msg || '';
+  }
+
+  async function syncModalVisibility() {
+    const payment = getSelectedPaymentMethod();
+    const del = getSelectedDeliveryMethod();
+
+    // Secciones por método de pago
+    cashSection?.classList.toggle('hidden', payment !== 'cash');
+    transferSection?.classList.toggle('hidden', payment !== 'transfer');
+
+    // Dirección / pickup
+    pickupInfo?.classList.toggle('hidden', del !== 'pickup');
+    deliveryAddressWrap?.classList.toggle('hidden', del !== 'delivery');
+    if (del === 'delivery') await prefillAddressIfPossible();
+
     updateModalTotals();
-  });
+    updateConfirmEnabled();
+  }
+
+  function updateConfirmEnabled() {
+    const payment = getSelectedPaymentMethod();
+    const del = getSelectedDeliveryMethod();
+    const withDelivery = del === 'delivery';
+    const address = (deliveryAddress?.value || '').trim();
+    const transferCode = (transferRef?.value || '').trim();
+
+    let ok = true;
+    let msg = '';
+
+    if (!payment) {
+      ok = false;
+      msg = 'Selecciona el método de pago.';
+    } else if (!del) {
+      ok = false;
+      msg = 'Selecciona si quieres domicilio o recogida en tienda.';
+    } else if (withDelivery && !address) {
+      ok = false;
+      msg = 'Tu dirección está vacía. Ve a tu perfil y guárdala para poder pedir a domicilio.';
+    } else if (payment === 'transfer' && !transferCode) {
+      ok = false;
+      msg = 'Indica el código de confirmación de la transferencia.';
+    }
+
+    if (btnConfirm) btnConfirm.disabled = !ok;
+    setCheckoutError(msg);
+  }
+
+  document.querySelectorAll('input[name="payment-method"]').forEach((el) =>
+    el.addEventListener('change', () => syncModalVisibility())
+  );
+  document.querySelectorAll('input[name="delivery-method"]').forEach((el) =>
+    el.addEventListener('change', () => syncModalVisibility())
+  );
+  transferRef?.addEventListener('input', updateConfirmEnabled);
 
   btnCheckout?.addEventListener('click', async () => {
     const user = await Auth.getUser();
@@ -343,12 +426,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     reservedStock = { byProduct: byProduct };
 
     orderRef.textContent = 'EMP-' + Date.now().toString(36).toUpperCase();
-    transferRef.value = '';
-    if (deliveryCheckbox) deliveryCheckbox.checked = false;
-    if (deliveryAddressWrap) deliveryAddressWrap.classList.add('hidden');
-    if (pickupInfo) pickupInfo.classList.remove('hidden');
-    // Mantener la última dirección escrita, pero autollenar si está vacío
-    if (deliveryAddress && !deliveryAddress.value.trim()) await prefillAddressIfPossible();
+    if (transferRef) transferRef.value = '';
+    if (payCash) payCash.checked = false;
+    if (payTransfer) payTransfer.checked = false;
+    if (deliveryPickup) deliveryPickup.checked = false;
+    if (deliveryDelivery) deliveryDelivery.checked = false;
+    cashSection?.classList.add('hidden');
+    transferSection?.classList.add('hidden');
+    deliveryAddressWrap?.classList.add('hidden');
+    pickupInfo?.classList.add('hidden');
+    setCheckoutError('');
+    if (btnConfirm) btnConfirm.disabled = true;
+
+    // Cuenta por defecto (puedes cambiar el texto aquí sin tocar JS)
+    if (bankAccount && !bankAccount.textContent.trim()) bankAccount.textContent = '0000 0000 0000 0000';
+
     updateModalTotals();
     modal.classList.remove('hidden');
   });
@@ -430,13 +522,29 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
 
-    const subtotal = getSubtotal();
-    const withDelivery = deliveryCheckbox?.checked === true;
+    const payment = getSelectedPaymentMethod();
+    const delivery = getSelectedDeliveryMethod();
+    const withDelivery = delivery === 'delivery';
     const address = (deliveryAddress?.value || '').trim();
-    if (withDelivery && !address) {
-      notify('Indica la dirección de entrega para el envío a domicilio.', 'warning');
+    const transferCode = (transferRef?.value || '').trim();
+
+    if (!payment || !delivery) {
+      notify('Completa las opciones de pago y domicilio antes de confirmar.', 'warning');
+      updateConfirmEnabled();
       return;
     }
+    if (withDelivery && !address) {
+      notify('Tu dirección está vacía. Ve a tu perfil y guárdala para poder pedir a domicilio.', 'warning');
+      updateConfirmEnabled();
+      return;
+    }
+    if (payment === 'transfer' && !transferCode) {
+      notify('Indica el código de confirmación de la transferencia.', 'warning');
+      updateConfirmEnabled();
+      return;
+    }
+
+    const subtotal = getSubtotal();
     const total = subtotal + (withDelivery ? DELIVERY_COST_CUP : 0);
     const ref = 'EMP-' + Date.now().toString(36).toUpperCase();
 
@@ -446,8 +554,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       user_phone: profile.phone.trim(),
       total,
       status: 'pendiente',
-      transfer_reference: transferRef.value.trim() || null,
-      bank_details: 'IBAN: ES00 0000 0000 0000 0000 0000',
+      transfer_reference: payment === 'transfer' ? transferCode : null,
+      bank_details: payment === 'transfer' ? `Cuenta: ${(bankAccount?.textContent || '').trim()}` : null,
       delivery_requested: !!withDelivery,
       delivery_address: withDelivery ? address : null
     };
@@ -485,13 +593,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (window.UI?.openModal) {
       UI.openModal({
         title: 'Pedido creado',
-        html: `<p class="ui-modal__text">Estado: <strong>Pago pendiente</strong>. Realiza la transferencia y espera la confirmación.</p>`,
+        html:
+          payment === 'cash'
+            ? `<p class="ui-modal__text">Estado: <strong>Pendiente</strong>. Debes completar la acción en <strong>48 horas</strong> o el pedido se cancelará.</p>`
+            : `<p class="ui-modal__text">Estado: <strong>Pago pendiente</strong>. Realiza la transferencia y espera la confirmación.</p>`,
         actions: [
           { label: 'Ver mis pedidos', variant: 'primary', onClick: () => (location.href = 'pedidos.html') },
         ],
       });
     } else {
-      notify('Pedido creado. Estado: Pago pendiente.', 'success');
+      notify(payment === 'cash' ? 'Pedido creado. Estado: Pendiente.' : 'Pedido creado. Estado: Pago pendiente.', 'success');
       location.href = 'pedidos.html';
     }
   });

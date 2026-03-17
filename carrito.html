@@ -103,30 +103,78 @@
   <!-- Modal de checkout -->
   <div id="checkout-modal" class="modal hidden">
     <div class="modal-content">
-      <h2>Confirmar pedido - Transferencia bancaria</h2>
-      <p>Subtotal: <strong id="modal-subtotal">0</strong> CUP</p>
-      <div class="checkout-delivery">
-        <label class="checkout-delivery-option">
-          <input type="checkbox" id="delivery-checkbox">
-          <span>Envío a domicilio (+150 CUP)</span>
+      <h2>Confirmar pedido</h2>
+
+      <div class="checkout-step">
+        <p class="checkout-step__title"><strong>1) ¿Cómo vas a pagar?</strong></p>
+        <label class="checkout-choice">
+          <input type="radio" name="payment-method" value="cash" id="pay-cash">
+          <span class="checkout-choice__label">Efectivo</span>
         </label>
-        <div id="pickup-info" class="pickup-info">
+        <label class="checkout-choice">
+          <input type="radio" name="payment-method" value="transfer" id="pay-transfer">
+          <span class="checkout-choice__label">Transferencia</span>
+        </label>
+      </div>
+
+      <div class="checkout-step">
+        <p class="checkout-step__title"><strong>2) ¿Quieres domicilio?</strong></p>
+        <label class="checkout-choice">
+          <input type="radio" name="delivery-method" value="pickup" id="delivery-pickup">
+          <span class="checkout-choice__label">No (recoger en tienda)</span>
+        </label>
+        <label class="checkout-choice">
+          <input type="radio" name="delivery-method" value="delivery" id="delivery-delivery">
+          <span class="checkout-choice__label">Sí (+150 CUP)</span>
+        </label>
+
+        <div id="pickup-info" class="pickup-info hidden">
           <p><strong>Recogida en tienda:</strong> Puedes pasar a recoger tu pedido en nuestra tienda.</p>
           <p class="pickup-muted">Dirección: <strong>Edicio 30 Apartamento 14 Olviso 2, Sancti Spíritus</strong> · Horario: 9:00–18:00</p>
         </div>
+
         <div id="delivery-address-wrap" class="hidden">
           <label for="delivery-address">Dirección de entrega</label>
-          <textarea id="delivery-address" rows="3" placeholder="Calle, número, edificio, piso, municipio..."></textarea>
+          <textarea id="delivery-address" rows="3" placeholder="Escribe la dirección de entrega."></textarea>
+          <p class="pickup-muted checkout-muted">
+            Te sugerimos la dirección guardada en tu <a href="perfil.html">perfil</a>, pero puedes ajustarla aquí si lo necesitas.
+          </p>
         </div>
       </div>
-      <p class="checkout-total-line">Total a pagar: <strong id="modal-total">0</strong> CUP</p>
-      <p class="transfer-info">
-        <strong>Datos para transferencia:</strong><br>
-        IBAN: ES00 0000 0000 0000 0000 0000<br>
-        Concepto: <span id="order-ref">Pedido-XXX</span>
-      </p>
-      <p>Indica el código de confirmación: (obligatorio):</p>
-      <input type="text" id="transfer-reference" placeholder="Ej: TR252038545">
+
+      <div class="checkout-totals">
+        <p class="checkout-totals__row"><span>Subtotal</span> <strong><span id="modal-subtotal">0</span> CUP</strong></p>
+        <p class="checkout-totals__row"><span>Domicilio</span> <strong><span id="modal-delivery">0</span> CUP</strong></p>
+        <p class="checkout-total-line">Total a pagar: <strong><span id="modal-total">0</span> CUP</strong></p>
+      </div>
+
+      <div id="cash-section" class="hidden">
+        <p class="transfer-info checkout-alert">
+          <strong>Importante:</strong> Debes completar la acción en <strong>48 horas</strong> o el pedido se cancelará automáticamente.
+        </p>
+      </div>
+
+      <div id="transfer-section" class="hidden">
+        <p class="transfer-info">
+          <strong>Datos para transferencia:</strong><br>
+          Cuenta: <strong id="bank-account">0000 0000 0000 0000</strong><br>
+          Concepto: <span id="order-ref">EMP-XXX</span>
+        </p>
+
+        <div class="checkout-split">
+          <div class="checkout-panel">
+            <p class="checkout-panel__title"><strong>Escanea el QR (opcional)</strong></p>
+            <img id="transfer-qr" class="checkout-qr" alt="QR de transferencia">
+          </div>
+          <div class="checkout-panel">
+            <p class="checkout-panel__title"><strong>Código de confirmación (obligatorio)</strong></p>
+            <input type="text" id="transfer-reference" placeholder="Ej: TR252038545" autocomplete="off">
+            <p class="pickup-muted checkout-muted">Sin este código no podrás finalizar el pedido.</p>
+          </div>
+        </div>
+      </div>
+
+      <p id="checkout-error" class="error-msg checkout-error"></p>
       <div class="modal-actions">
         <button id="btn-cancel-order" class="btn btn-outline">Cancelar</button>
         <button id="btn-confirm-order" class="btn btn-primary">Confirmar pedido</button>
