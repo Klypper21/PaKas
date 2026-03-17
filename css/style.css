@@ -2141,6 +2141,7 @@ body {
 }
 
 .modal-content input {
+  display: none;
   width: 100%;
   padding: 1rem 1.25rem;
   margin-top: 0.5rem;
