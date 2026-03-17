@@ -104,28 +104,31 @@
       const err = document.getElementById('register-error');
       err.textContent = '';
       const { name, identifier, password, phone, address } = Object.fromEntries(new FormData(form));
-      const { data, error } = await Auth.register((identifier || '').trim(), password, (name || '').trim(), address || '');
-      if (error) { err.textContent = error; return; }
-      if (data?.user) {
-        const { error: profileErr } = await Auth.ensureProfile({
-          full_name: (name || '').trim(),
-          phone: (phone || '').trim(),
-          address: (address || '').trim(),
-        });
-        if (profileErr) { err.textContent = profileErr; return; }
-      }
       const cleanIdentifier = (identifier || '').trim();
       const isEmail = cleanIdentifier.includes('@');
 
+      const { data, error } = await Auth.register(
+        cleanIdentifier,
+        password,
+        (name || '').trim(),
+        (address || '').trim(),
+        (phone || '').trim()
+      );
+      if (error) { err.textContent = error; return; }
+
       if (isEmail) {
-        // Registro con correo: pedir verificación antes de entrar.
+        // Registro con correo: Supabase NO crea sesión hasta que confirmes el email.
+        // Evitar "No hay sesión" y mostrar aviso de verificación.
         if (window.UI?.openModal) {
           UI.openModal({
             title: 'Verifica tu correo',
             html: `
               <p class="ui-modal__text">
                 Te enviamos un correo a <strong>${cleanIdentifier.replace(/</g, '&lt;')}</strong>.
-                Abre el enlace para activar tu cuenta y luego inicia sesión.
+                Abre el enlace para activar tu cuenta.
+              </p>
+              <p class="ui-modal__text">
+                Al confirmar, se abrirá una pestaña con un mensaje de bienvenida.
               </p>
               <p class="ui-modal__text" style="margin-bottom:0">
                 Si no lo ves, revisa <strong>spam</strong> o <strong>promociones</strong>.
@@ -150,6 +153,16 @@
         UI?.toast?.('Cuenta creada. Verifica tu correo para continuar.', 'success');
         form.reset();
         return;
+      }
+
+      // Registro por teléfono: normalmente ya hay sesión y se puede guardar el perfil.
+      if (data?.user) {
+        const { error: profileErr } = await Auth.ensureProfile({
+          full_name: (name || '').trim(),
+          phone: (phone || '').trim(),
+          address: (address || '').trim(),
+        });
+        if (profileErr) { err.textContent = profileErr; return; }
       }
 
       const redirect = new URLSearchParams(location.search).get('redirect');

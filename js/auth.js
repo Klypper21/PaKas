@@ -30,15 +30,24 @@ const Auth = {
     return { data, error: error?.message };
   },
 
-  async register(identifier, password, name = '', address = '') {
+  async register(identifier, password, name = '', address = '', phone = '') {
     if (!this.supabase) return { error: 'Supabase no configurado' };
     const isEmail = typeof identifier === 'string' && identifier.includes('@');
     const authPayload = isEmail ? { email: identifier } : { phone: identifier };
     const options = {};
-    if (name || address) {
+    if (isEmail) {
+      try {
+        // Importante: esta URL debe estar permitida en Supabase (Authentication > URL Configuration).
+        options.emailRedirectTo = new URL('confirmacion.html', window.location.href).toString();
+      } catch (_) {
+        // Si falla la construcción del URL, Supabase usará la configuración por defecto del proyecto.
+      }
+    }
+    if (name || address || phone) {
       options.data = {};
       if (name) options.data.full_name = name;
       if (address) options.data.address = address;
+      if (phone) options.data.phone = phone;
     }
     const { data, error } = await this.supabase.auth.signUp({
       ...authPayload,

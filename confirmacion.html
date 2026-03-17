@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cuenta confirmada - PaKas</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <a href="index.html" class="back-btn-mobile">&larr; Volver a la tienda</a>
+    <a href="index.html" class="logo">
+      <picture>
+        <source media="(max-width: 768px)" srcset="img/logo-paka.png">
+        <img src="img/pakas name.png" alt="PaKas">
+      </picture>
+    </a>
+    <div class="nav-links">
+      <a href="index.html" class="nav-link">
+        <span class="nav-text">Tienda</span>
+      </a>
+    </div>
+  </nav>
+
+  <main class="auth-container">
+    <div class="auth-card confirm-card">
+      <div class="auth-card-header">
+        <a href="index.html">
+          <img class="auth-logo" src="img/pakas name.png" alt="PaKas">
+        </a>
+        <h2 id="confirm-title">Confirmando tu correo…</h2>
+        <p id="confirm-subtitle">Un momento, por favor.</p>
+      </div>
+
+      <div class="confirm-body">
+        <div id="confirm-status" class="confirm-status confirm-status--loading" aria-live="polite">
+          Procesando verificación…
+        </div>
+
+        <div class="confirm-actions">
+          <a id="btn-go-store" href="index.html" class="btn btn-primary btn-block">Regresar a la tienda</a>
+          <a id="btn-go-login" href="login.html" class="btn btn-outline btn-block" style="margin-top:0.6rem; display:none">
+            Iniciar sesión
+          </a>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="js/config.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/confirmacion.js"></script>
+</body>
+</html>
