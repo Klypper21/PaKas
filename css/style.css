@@ -1492,6 +1492,17 @@ body {
   font-size: 1.05rem;
 }
 
+.btn-icon-svg {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.btn-icon-svg svg {
+  display: block;
+}
+
 .admin-orders .order-card {
   display: flex;
   justify-content: space-between;
@@ -1571,6 +1582,29 @@ body {
 .admin-orders .btn-whatsapp:hover {
   opacity: 0.9;
   color: white;
+}
+
+/* Admin: acciones icon-only en móvil */
+@media (max-width: 768px) {
+  .admin-orders .order-card-actions .btn-text {
+    display: none;
+  }
+
+  .admin-orders .order-card-actions .btn-complete,
+  .admin-orders .order-card-actions .btn-cancel,
+  .admin-orders .order-card-actions .btn-whatsapp {
+    padding: 0.6rem;
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .admin-orders .order-card-actions {
+    gap: 0.4rem;
+  }
 }
 
 /* Admin tabs */
@@ -1671,6 +1705,27 @@ body {
 .admin-product-info .btn-edit-product {
   margin-top: 0.5rem;
   width: 100%;
+}
+
+.admin-product-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.admin-product-actions .btn {
+  flex: 1;
+  width: 100%;
+}
+
+.btn-delete-product {
+  border-color: rgba(192, 57, 43, 0.35);
+  color: var(--error);
+}
+
+.btn-delete-product:hover {
+  border-color: var(--error);
+  background: rgba(192, 57, 43, 0.06);
 }
 
 /* Admin product form modal */

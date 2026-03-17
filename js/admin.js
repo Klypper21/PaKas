@@ -25,6 +25,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     else console.log(type.toUpperCase() + ':', msg);
   };
 
+  // Iconos inline (evita dependencias externas)
+  const ICONS = {
+    check: `
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M20 6 9 17l-5-5"></path>
+      </svg>
+    `,
+    x: `
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M18 6 6 18"></path>
+        <path d="M6 6l12 12"></path>
+      </svg>
+    `,
+    whatsapp: `
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 32 32" fill="currentColor" aria-hidden="true">
+        <path d="M19.11 17.6c-.28-.14-1.66-.82-1.92-.91-.26-.1-.45-.14-.64.14-.19.28-.73.91-.9 1.1-.17.19-.33.21-.61.07-.28-.14-1.18-.44-2.25-1.39-.83-.74-1.39-1.66-1.55-1.94-.16-.28-.02-.43.12-.57.12-.12.28-.33.42-.49.14-.16.19-.28.28-.47.09-.19.05-.35-.02-.49-.07-.14-.64-1.55-.88-2.13-.23-.55-.47-.48-.64-.49h-.55c-.19 0-.49.07-.75.35-.26.28-.99.97-.99 2.36 0 1.39 1.01 2.74 1.15 2.93.14.19 1.99 3.04 4.82 4.27.67.29 1.19.46 1.6.59.67.21 1.28.18 1.76.11.54-.08 1.66-.68 1.89-1.33.23-.65.23-1.2.16-1.33-.07-.12-.26-.19-.54-.33zM16.02 26.67c-1.73 0-3.42-.47-4.9-1.36l-3.42.9.92-3.34c-.96-1.54-1.46-3.31-1.46-5.15 0-5.36 4.36-9.72 9.72-9.72 2.6 0 5.05 1.01 6.88 2.84a9.66 9.66 0 0 1 2.84 6.88c0 5.36-4.36 9.95-9.58 9.95zm0-21.34C9.12 5.33 3.53 10.92 3.53 17.82c0 2.06.54 4.08 1.57 5.86L4 29.87l6.33-1.66a12.3 12.3 0 0 0 5.69 1.39c6.65 0 12.79-5.14 12.79-11.78 0-3.16-1.23-6.13-3.47-8.36A11.72 11.72 0 0 0 16.02 5.33z"/>
+      </svg>
+    `,
+    trash: `
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3 6h18"></path>
+        <path d="M8 6V4h8v2"></path>
+        <path d="M19 6l-1 14H6L5 6"></path>
+        <path d="M10 11v6"></path>
+        <path d="M14 11v6"></path>
+      </svg>
+    `,
+  };
+
   // Referencias para la sección de productos (se inicializan bajo demanda)
   let adminProductsGrid;
   let adminProductsEmpty;
@@ -187,9 +216,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         <div class="order-items">${itemsHtml}</div>
       </div>
       <div class="order-card-actions">
-        <button type="button" class="btn-complete" data-id="${order.id}">Aprobar pago</button>
-        <button type="button" class="btn-cancel" data-id="${order.id}" data-phone="${escapeHtml(order.user_phone || '')}" data-msg="${escapeHtml(msgCancelar)}">Cancelar pago</button>
-        ${whatsappUrl ? `<a href="${whatsappUrl}" target="_blank" rel="noopener" class="btn-whatsapp" title="Escribir por WhatsApp">WhatsApp</a>` : ''}
+        <button type="button" class="btn-complete" data-id="${order.id}" aria-label="Aprobar pago" title="Aprobar pago">
+          <span class="btn-icon-svg">${ICONS.check}</span>
+          <span class="btn-text">Aprobar</span>
+        </button>
+        <button type="button" class="btn-cancel" data-id="${order.id}" data-phone="${escapeHtml(order.user_phone || '')}" data-msg="${escapeHtml(msgCancelar)}" aria-label="Cancelar pago" title="Cancelar pago">
+          <span class="btn-icon-svg">${ICONS.x}</span>
+          <span class="btn-text">Cancelar</span>
+        </button>
+        ${
+          whatsappUrl
+            ? `<a href="${whatsappUrl}" target="_blank" rel="noopener" class="btn-whatsapp" aria-label="Escribir por WhatsApp" title="WhatsApp">
+                <span class="btn-icon-svg">${ICONS.whatsapp}</span>
+                <span class="btn-text">WhatsApp</span>
+              </a>`
+            : ''
+        }
       </div>
     `;
     container.appendChild(card);
@@ -232,7 +274,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         ${deliveryInfoCompleted}
         <div class="order-items">${itemsHtml}</div>
       </div>
-      ${whatsappUrlCompleted ? `<div class="order-card-actions"><a href="${whatsappUrlCompleted}" target="_blank" rel="noopener" class="btn-whatsapp" title="Escribir por WhatsApp">WhatsApp</a></div>` : ''}
+      ${
+        whatsappUrlCompleted
+          ? `<div class="order-card-actions">
+              <a href="${whatsappUrlCompleted}" target="_blank" rel="noopener" class="btn-whatsapp" aria-label="Escribir por WhatsApp" title="WhatsApp">
+                <span class="btn-icon-svg">${ICONS.whatsapp}</span>
+                <span class="btn-text">WhatsApp</span>
+              </a>
+            </div>`
+          : ''
+      }
     `;
     container.appendChild(card);
   }
@@ -480,7 +531,13 @@ document.addEventListener('DOMContentLoaded', async () => {
           <h3>${escapeHtml(p.name)}</h3>
           <p class="admin-product-price">${parseFloat(p.price).toFixed(2)} CUP</p>
           <p class="admin-product-stock">Stock: ${p.stock ?? 0}</p>
-          <button type="button" class="btn btn-outline btn-edit-product" data-id="${p.id}">Editar</button>
+          <div class="admin-product-actions">
+            <button type="button" class="btn btn-outline btn-edit-product" data-id="${p.id}">Editar</button>
+            <button type="button" class="btn btn-outline btn-delete-product" data-id="${p.id}" aria-label="Eliminar producto" title="Eliminar">
+              <span class="btn-icon-svg">${ICONS.trash}</span>
+              <span class="btn-text">Eliminar</span>
+            </button>
+          </div>
         </div>
       </div>
     `
@@ -491,6 +548,35 @@ document.addEventListener('DOMContentLoaded', async () => {
       btn.addEventListener('click', () => {
         const product = products.find((x) => x.id === btn.dataset.id);
         if (product) openProductFormModal(product);
+      });
+    });
+
+    adminProductsGrid.querySelectorAll('.btn-delete-product').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.id;
+        if (!id) return;
+        const product = products.find((x) => x.id === id);
+        const name = product?.name ? `“${product.name}”` : 'este producto';
+        const ok = window.UI?.confirm
+          ? await UI.confirm({
+              title: 'Eliminar producto',
+              message: `¿Seguro que deseas eliminar ${name}? Esta acción no se puede deshacer.`,
+              confirmText: 'Eliminar',
+              cancelText: 'Cancelar',
+              danger: true,
+            })
+          : confirm(`¿Seguro que deseas eliminar ${name}?`);
+        if (!ok) return;
+
+        btn.disabled = true;
+        const { error: delErr } = await supabase.from('products').delete().eq('id', id);
+        if (delErr) {
+          btn.disabled = false;
+          notify('No se pudo eliminar: ' + delErr.message, 'error');
+          return;
+        }
+        notify('Producto eliminado.', 'success');
+        loadAdminProducts();
       });
     });
   }
