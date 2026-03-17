@@ -38,7 +38,7 @@ const Auth = {
     if (isEmail) {
       try {
         // Importante: esta URL debe estar permitida en Supabase (Authentication > URL Configuration).
-        options.emailRedirectTo = new URL('confirmacion.html', window.location.href).toString();
+        options.emailRedirectTo = 'https://klypper21.github.io/PaKas/confirmacion.html';
       } catch (_) {
         // Si falla la construcción del URL, Supabase usará la configuración por defecto del proyecto.
       }
@@ -87,11 +87,13 @@ const Auth = {
     if (!full_name?.trim() || !phone?.trim()) {
       return { error: 'Nombre y teléfono son obligatorios' };
     }
+    const addr = (address || '').trim();
     const { error } = await this.supabase.from('profiles').upsert(
       {
         user_id: user.id,
         full_name: full_name.trim(),
         phone: phone.trim(),
+        ...(addr ? { address: addr } : {}),
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'user_id' }
@@ -99,7 +101,6 @@ const Auth = {
     if (error) return { error: error?.message };
 
     // Guardar dirección en metadatos del usuario (no depende del esquema de profiles)
-    const addr = (address || '').trim();
     if (addr) {
       const { error: metaErr } = await this.supabase.auth.updateUser({
         data: { ...(user.user_metadata || {}), address: addr, full_name: full_name.trim() },

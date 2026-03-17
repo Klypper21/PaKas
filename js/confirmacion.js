@@ -60,6 +60,26 @@ document.addEventListener('DOMContentLoaded', async () => {
     const user = await Auth.getUser();
     const email = user?.email || '';
 
+    // Si el registro fue por correo, al confirmar ya hay sesión:
+    // completar automáticamente el perfil (full_name/phone/address) desde metadata si falta en `profiles`.
+    if (user?.id && Auth.supabase) {
+      try {
+        const profile = await Auth.getProfile(user.id);
+        const meta = user.user_metadata || {};
+        const metaName = (meta.full_name || '').trim();
+        const metaPhone = (meta.phone || '').trim();
+        const metaAddress = (meta.address || '').trim();
+
+        const missingName = !profile?.full_name?.trim();
+        const missingPhone = !profile?.phone?.trim();
+        if ((missingName || missingPhone) && metaName && metaPhone) {
+          await Auth.ensureProfile({ full_name: metaName, phone: metaPhone, address: metaAddress });
+        }
+      } catch (_) {
+        // Silencioso: la confirmación debe seguir aunque no se pueda completar el perfil.
+      }
+    }
+
     setState({
       title: '¡Correo confirmado!',
       subtitle: email ? `Sesión iniciada como ${email}` : 'Tu cuenta ya está activa.',

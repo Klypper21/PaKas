@@ -17,7 +17,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const profile = await Auth.getProfile(user.id);
   if (form) {
     form.full_name.value = (profile?.full_name || user.user_metadata?.full_name || '').trim();
-    form.phone.value = (profile?.phone || '').trim();
+    form.phone.value = (profile?.phone || user.user_metadata?.phone || '').trim();
     if (form.address) {
       form.address.value = (profile?.address || user.user_metadata?.address || '').trim();
     }

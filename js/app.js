@@ -6,6 +6,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   initNavbarScrollHide();
   initSwipeTabs();
   initMobileSwipeNav();
+  initTopNavActiveLink();
   if (Auth.supabase) {
     initAuthButtons();
     updateNavAuth();
@@ -26,6 +27,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 });
+
+function initTopNavActiveLink() {
+  const nav = document.querySelector('.nav-links');
+  if (!nav) return;
+
+  function normalizePath(p) {
+    const clean = (p || '').split('?')[0].split('#')[0];
+    if (!clean) return '';
+    if (clean.endsWith('/')) return 'index.html';
+    return clean.split('/').pop() || clean;
+  }
+
+  const links = Array.from(nav.querySelectorAll('a.nav-link'));
+  if (!links.length) return;
+  const current = normalizePath(window.location.pathname);
+  links.forEach((a) => {
+    const isActive = normalizePath(a.getAttribute('href')) === current;
+    a.classList.toggle('is-active', isActive);
+    if (isActive) a.setAttribute('aria-current', 'page');
+    else a.removeAttribute('aria-current');
+  });
+}
 
 // UI: notificaciones y modales consistentes (evita alerts/confirm del sistema)
 (() => {

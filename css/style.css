@@ -2469,10 +2469,30 @@ body {
   left: 50%;
   transform: translateX(-50%);
   bottom: 6px;
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
+  width: 18px;
+  height: 2px;
+  border-radius: 2px;
   background: var(--text);
+}
+
+/* Indicador de pestaña activa (PC / navbar superior) */
+.nav-links .nav-link {
+  position: relative;
+  padding-bottom: 0.25rem;
+}
+
+.nav-links .nav-link[aria-current="page"]::after,
+.nav-links .nav-link.is-active::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 0;
+  width: 22px;
+  height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.9;
 }
 
 .nav-bottom-link:hover,
