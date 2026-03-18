@@ -158,7 +158,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     if (removed.length) {
-      Cart.set(keep);
+      localStorage.setItem('cart', JSON.stringify(keep));
+      Cart._saveToDB(keep).catch(e => console.error('Error saving to DB:', e));
       const names = removed
         .map((r) => (r?.name || '').trim())
         .filter(Boolean)
@@ -176,8 +177,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       const suffix = capped.length > names.length ? ` y ${capped.length - names.length} más` : '';
       const label = names.length ? `: ${names.join(', ')}${suffix}` : '';
       notify(`Se ajustaron cantidades al stock disponible${label}.`, 'warning');
-      // ya quedó guardado en Cart.set(keep) si hubo removed; si no, aseguramos set
-      if (!removed.length) Cart.set(keep);
+      // ya quedó guardado con localStorage si hubo removed; si no, aseguramos set
+      if (!removed.length) {
+        localStorage.setItem('cart', JSON.stringify(keep));
+        Cart._saveToDB(keep).catch(e => console.error('Error saving to DB:', e));
+      }
     }
 
     lastStockMap = new Map(
@@ -281,7 +285,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       if (action === 'minus') {
         const next = current - 1;
-        Cart.setQuantityWithStock(id, next, { notify }).then(() => renderCart());
+        // Renderizar instantáneamente (actualización optimista)
+        Cart.setQuantityWithStock(id, next, { notify });
+        renderCart();
         return;
       }
       if (action === 'plus') {
@@ -289,7 +295,9 @@ document.addEventListener('DOMContentLoaded', async () => {
           notify(`No puedes añadir más. Solo quedan ${maxStock} en stock.`, 'warning');
           return;
         }
-        Cart.setQuantityWithStock(id, current + 1, { notify }).then(() => renderCart());
+        // Renderizar instantáneamente (actualización optimista)
+        Cart.setQuantityWithStock(id, current + 1, { notify });
+        renderCart();
         return;
       }
     }
@@ -579,6 +587,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   await syncCartWithStock();
   renderCart();
+
+  // Listener para actualizar carrito cuando se ajuste el stock en segundo plano
+  window.addEventListener('cartUpdated', async () => {
+    await syncCartWithStock();
+    renderCart();
+  });
 
   // -------- Modal de producto (detalle) en carrito --------
   async function openProductModal(productId) {

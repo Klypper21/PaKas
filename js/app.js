@@ -675,7 +675,12 @@ const Cart = {
     const idx = cart.findIndex(i => i.id === product.id);
     if (idx >= 0) cart[idx].quantity += quantity;
     else cart.push({ ...product, quantity });
-    this.set(cart);
+    
+    localStorage.setItem('cart', JSON.stringify(cart));
+    updateCartCount?.();
+    
+    // Guardar en BD de forma asincrónica sin esperar (fire-and-forget)
+    this._saveToDB(cart).catch(e => console.error('Error saving to DB:', e));
   },
 
   async getStock(productId) {
@@ -701,39 +706,74 @@ const Cart = {
     if (!product?.id) return { ok: false, reason: 'missing_id', added: 0 };
 
     const notify = typeof opts.notify === 'function' ? opts.notify : null;
-    const stock = await this.getStock(product.id);
-
-    if (typeof stock === 'number') {
-      if (stock <= 0) {
-        notify?.('Este producto está agotado.', 'warning');
-        return { ok: false, reason: 'out_of_stock', added: 0, stock };
-      }
-    }
-
+    
+    // Actualización optimista: agregar al carrito inmediatamente
     const cart = this.get();
     const idx = cart.findIndex((i) => i.id === product.id);
     const currentQty = idx >= 0 ? Number(cart[idx].quantity) || 0 : 0;
     const desired = currentQty + requested;
 
-    const finalQty = typeof stock === 'number' ? Math.min(desired, stock) : desired;
-    const added = Math.max(0, finalQty - currentQty);
+    // Estimación optimista: asumir que hay suficiente stock
+    const optimisticQty = desired;
+    
+    if (idx >= 0) {
+      cart[idx].quantity = optimisticQty;
+    } else {
+      cart.push({ ...product, quantity: optimisticQty });
+    }
+    
+    localStorage.setItem('cart', JSON.stringify(cart));
+    updateCartCount?.();
+    
+    // Guardar en BD de forma asincrónica sin esperar (fire-and-forget)
+    this._saveToDB(cart).catch(e => console.error('Error saving to DB:', e));
 
-    if (added <= 0) {
-      if (typeof stock === 'number') {
-        notify?.(`Solo quedan ${stock} en stock.`, 'warning');
+    const added = optimisticQty - currentQty;
+
+    // Validar stock en segundo plano
+    this._validateAndAdjustAddedItem(product.id, optimisticQty, currentQty, notify);
+
+    return { ok: true, reason: 'added', added };
+  },
+
+  // Valida el stock del producto que se agregó
+  async _validateAndAdjustAddedItem(productId, optimisticQty, previousQty, notify) {
+    try {
+      const stock = await this.getStock(productId);
+      if (typeof stock !== 'number') return;
+
+      const cart = this.get();
+      const idx = cart.findIndex((i) => i.id === productId);
+      if (idx < 0) return;
+
+      if (stock <= 0) {
+        // Producto agotado, remover
+        const next = cart.filter((i) => i.id !== productId);
+        localStorage.setItem('cart', JSON.stringify(next));
+        await this._saveToDB(next);
+        updateCartCount?.();
+        notify?.('Este producto está agotado.', 'warning');
+        window.dispatchEvent(new CustomEvent('cartUpdated'));
+        return;
       }
-      return { ok: false, reason: 'capped', added: 0, stock, finalQty };
-    }
 
-    if (idx >= 0) cart[idx].quantity = finalQty;
-    else cart.push({ ...product, quantity: finalQty });
-    this.set(cart);
-
-    if (typeof stock === 'number' && finalQty < desired) {
-      notify?.(`Se ajustó la cantidad al stock disponible (${stock}).`, 'warning');
-      return { ok: true, reason: 'added_capped', added, stock, finalQty };
+      if (optimisticQty > stock) {
+        // Ajustar a stock disponible
+        const finalQty = Math.min(optimisticQty, stock);
+        cart[idx].quantity = finalQty;
+        localStorage.setItem('cart', JSON.stringify(cart));
+        await this._saveToDB(cart);
+        updateCartCount?.();
+        
+        const added = finalQty - previousQty;
+        if (added > 0) {
+          notify?.(`Se ajustó la cantidad al stock disponible (${stock}).`, 'warning');
+        }
+        window.dispatchEvent(new CustomEvent('cartUpdated'));
+      }
+    } catch (e) {
+      console.error('Error validating added item:', e);
     }
-    return { ok: true, reason: 'added', added, stock, finalQty };
   },
 
   async setQuantityWithStock(productId, quantity, opts = {}) {
@@ -743,36 +783,78 @@ const Cart = {
     const idx = cart.findIndex((i) => i.id === productId);
     if (idx < 0) return { ok: false, reason: 'not_found' };
 
-    const stock = await this.getStock(productId);
-    if (typeof stock === 'number' && stock <= 0) {
-      // Si está agotado, lo sacamos del carrito
+    // Actualización optimista: cambiar cantidad inmediatamente
+    const originalQty = cart[idx].quantity;
+    if (q <= 0) {
       const next = cart.filter((i) => i.id !== productId);
-      this.set(next);
-      notify?.('Se eliminó un producto del carrito por estar agotado.', 'warning');
-      return { ok: true, reason: 'removed_out_of_stock', stock };
+      localStorage.setItem('cart', JSON.stringify(next));
+      updateCartCount?.();
+      // Guardar en BD de forma asincrónica sin esperar
+      this._saveToDB(next).catch(e => console.error('Error saving to DB:', e));
+      return { ok: true, reason: 'removed' };
     }
 
-    const finalQty = typeof stock === 'number' ? Math.min(q, stock) : q;
-    if (finalQty <= 0) {
-      const next = cart.filter((i) => i.id !== productId);
-      this.set(next);
-      return { ok: true, reason: 'removed', stock };
-    }
+    cart[idx].quantity = q;
+    localStorage.setItem('cart', JSON.stringify(cart));
+    updateCartCount?.();
+    
+    // Guardar en BD de forma asincrónica sin esperar (fire-and-forget)
+    this._saveToDB(cart).catch(e => console.error('Error saving to DB:', e));
 
-    cart[idx].quantity = finalQty;
-    this.set(cart);
-    if (typeof stock === 'number' && finalQty < q) {
-      notify?.(`Se ajustó la cantidad al stock disponible (${stock}).`, 'warning');
-      return { ok: true, reason: 'set_capped', stock, finalQty };
+    // Validar stock en segundo plano y ajustar si es necesario
+    this._validateAndAdjustQuantity(productId, q, originalQty, notify);
+
+    return { ok: true, reason: 'set' };
+  },
+
+  // Valida y ajusta cantidad en segundo plano
+  async _validateAndAdjustQuantity(productId, requestedQty, originalQty, notify) {
+    try {
+      const stock = await this.getStock(productId);
+      if (typeof stock !== 'number') return;
+
+      const cart = this.get();
+      const idx = cart.findIndex((i) => i.id === productId);
+      if (idx < 0) return;
+
+      if (stock <= 0) {
+        // Producto agotado, remover
+        const next = cart.filter((i) => i.id !== productId);
+        localStorage.setItem('cart', JSON.stringify(next));
+        await this._saveToDB(next);
+        updateCartCount?.();
+        notify?.('Se eliminó un producto del carrito por estar agotado.', 'warning');
+        // Trigger actualización visual
+        window.dispatchEvent(new CustomEvent('cartUpdated'));
+        return;
+      }
+
+      if (requestedQty > stock) {
+        // Ajustar a stock disponible
+        const finalQty = Math.min(requestedQty, stock);
+        cart[idx].quantity = finalQty;
+        localStorage.setItem('cart', JSON.stringify(cart));
+        await this._saveToDB(cart);
+        updateCartCount?.();
+        notify?.(`Se ajustó la cantidad al stock disponible (${stock}).`, 'warning');
+        // Trigger actualización visual
+        window.dispatchEvent(new CustomEvent('cartUpdated'));
+      }
+    } catch (e) {
+      console.error('Error validating stock:', e);
     }
-    return { ok: true, reason: 'set', stock, finalQty };
   },
 
   remove(productId) {
-    this.set(this.get().filter(i => i.id !== productId));
+    const cart = this.get().filter(i => i.id !== productId);
+    localStorage.setItem('cart', JSON.stringify(cart));
+    updateCartCount?.();
+    this._saveToDB(cart).catch(e => console.error('Error saving to DB:', e));
   },
 
   clear() {
-    this.set([]);
+    localStorage.setItem('cart', JSON.stringify([]));
+    updateCartCount?.();
+    this._saveToDB([]).catch(e => console.error('Error saving to DB:', e));
   }
 };
