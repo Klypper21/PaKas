@@ -259,6 +259,6 @@ const Auth = {
 
   onAuthChange(callback) {
     if (!this.supabase) return;
-    this.supabase.auth.onAuthStateChange((event, session) => callback(session));
+    this.supabase.auth.onAuthStateChange((event, session) => callback(session?.user ?? null));
   }
 };

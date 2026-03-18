@@ -11,10 +11,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     initAuthButtons();
     updateNavAuth();
     updateCartCount();
-    Auth.onAuthChange(() => {
+    
+    // Sincronizar carrito del usuario actual
+    const currentUser = await Auth.getUser();
+    if (currentUser) {
+      await Cart.initSync(currentUser.id);
+      updateCartCount();
+    }
+    
+    // Escuchar cambios de autenticación para sincronizar carrito
+    Auth.onAuthChange(async (user) => {
       updateNavAuth();
+      if (user) {
+        // Usuario inició sesión
+        await Cart.initSync(user.id);
+      } else {
+        // Usuario cerró sesión
+        Cart.resetSync();
+      }
       updateCartCount();
     });
+    
     if (!window.location.pathname.includes('login') && !window.location.pathname.includes('perfil.html')) {
       checkProfileComplete();
     }
@@ -553,15 +570,106 @@ function updateCartCount() {
   }
 }
 
-// Helpers para carrito en localStorage
+// Helpers para carrito sincronizado con Supabase
 const Cart = {
+  // Estado interno
+  _syncEnabled: false,
+  _userId: null,
+  _localCache: null,
+
+  // Inicializa sincronización cuando el usuario inicia sesión
+  async initSync(userId) {
+    this._userId = userId;
+    this._syncEnabled = true;
+    if (userId) {
+      await this._loadFromDB();
+    }
+  },
+
+  // Desactiva sincronización cuando el usuario cierra sesión
+  resetSync() {
+    this._syncEnabled = false;
+    this._userId = null;
+    this._localCache = null;
+  },
+
+  // Carga el carrito desde la base de datos
+  async _loadFromDB() {
+    if (!this._syncEnabled || !this._userId || !window.supabase) {
+      return JSON.parse(localStorage.getItem('cart') || '[]');
+    }
+    try {
+      const { data, error } = await supabase
+        .from('user_carts')
+        .select('items')
+        .eq('user_id', this._userId)
+        .maybeSingle();
+      
+      if (error) {
+        console.warn('Error loading cart from DB:', error);
+        return JSON.parse(localStorage.getItem('cart') || '[]');
+      }
+
+      if (data) {
+        const items = data.items || [];
+        this._localCache = items;
+        localStorage.setItem('cart', JSON.stringify(items));
+        return items;
+      }
+
+      // Si no existe registro, crear uno vacío
+      await this._createEmptyCartRecord();
+      return [];
+    } catch (e) {
+      console.error('Error loading cart:', e);
+      return JSON.parse(localStorage.getItem('cart') || '[]');
+    }
+  },
+
+  // Crea un registro vacío en la BD para el usuario
+  async _createEmptyCartRecord() {
+    if (!this._syncEnabled || !this._userId || !window.supabase) return;
+    try {
+      await supabase
+        .from('user_carts')
+        .insert({ user_id: this._userId, items: [] });
+    } catch (e) {
+      console.warn('Error creating cart record:', e);
+    }
+  },
+
+  // Guarda el carrito en la base de datos
+  async _saveToDB(items) {
+    if (!this._syncEnabled || !this._userId || !window.supabase) {
+      localStorage.setItem('cart', JSON.stringify(items));
+      return;
+    }
+    try {
+      // Intentar actualizar
+      const { error } = await supabase
+        .from('user_carts')
+        .update({ items })
+        .eq('user_id', this._userId);
+      
+      if (error) {
+        console.warn('Error saving cart:', error);
+      }
+    } catch (e) {
+      console.error('Error saving cart:', e);
+    }
+    // Siempre guardar en localStorage como fallback
+    localStorage.setItem('cart', JSON.stringify(items));
+  },
+
   get() {
     return JSON.parse(localStorage.getItem('cart') || '[]');
   },
+
   set(items) {
-    localStorage.setItem('cart', JSON.stringify(items));
+    this._saveToDB(items);
     updateCartCount?.();
   },
+
   add(product, quantity = 1) {
     const cart = this.get();
     const idx = cart.findIndex(i => i.id === product.id);
@@ -569,6 +677,7 @@ const Cart = {
     else cart.push({ ...product, quantity });
     this.set(cart);
   },
+
   async getStock(productId) {
     if (!window.supabase) return null;
     if (!productId) return null;
@@ -585,6 +694,7 @@ const Cart = {
       return null;
     }
   },
+
   async addWithStock(product, quantity = 1, opts = {}) {
     const requested = Math.max(0, Number(quantity) || 0);
     if (!requested) return { ok: false, reason: 'invalid_quantity', added: 0 };
@@ -625,6 +735,7 @@ const Cart = {
     }
     return { ok: true, reason: 'added', added, stock, finalQty };
   },
+
   async setQuantityWithStock(productId, quantity, opts = {}) {
     const notify = typeof opts.notify === 'function' ? opts.notify : null;
     const q = Math.max(0, Math.floor(Number(quantity) || 0));
@@ -656,9 +767,11 @@ const Cart = {
     }
     return { ok: true, reason: 'set', stock, finalQty };
   },
+
   remove(productId) {
     this.set(this.get().filter(i => i.id !== productId));
   },
+
   clear() {
     this.set([]);
   }
