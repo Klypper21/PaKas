@@ -1,0 +1,51 @@
+[build]
+  command = "npm run build"
+  functions = "supabase/functions"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains; preload"
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "geolocation=(), microphone=(), camera=()"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://lkzhepmxziliwvlxojqz.supabase.co; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https:; font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com; connect-src 'self' https://lkzhepmxziliwvlxojqz.supabase.co https://*.supabase.co; frame-ancestors 'none'; object-src 'none'; base-uri 'self';"
+
+[[redirects]]
+  from = "/admin"
+  to = "/admin.html"
+  status = 200
+
+[[redirects]]
+  from = "/login"
+  to = "/login.html"
+  status = 200
+
+[[redirects]]
+  from = "/carrito"
+  to = "/carrito.html"
+  status = 200
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[plugins]]
+  package = "@netlify/plugin-lighthouse"
+  
+[context.production]
+  command = "npm run build:prod"
+  environment = { NODE_ENV = "production" }
+
+[context.deploy-preview]
+  command = "npm run build"
+  
+[context.branch-deploy]
+  command = "npm run build"

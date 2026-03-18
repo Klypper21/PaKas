@@ -1,0 +1,37 @@
+# SEGURIDAD - No subir archivos sensibles
+.env
+.env.local
+.env.*.local
+.env.production
+
+# Node
+node_modules/
+package-lock.json
+yarn.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+dist/
+build/
+.cache/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Dependencies
+vendor/
+
+# Variables de entorno privadas
+config.local.js
+secrets.json
