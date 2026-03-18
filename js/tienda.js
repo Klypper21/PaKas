@@ -79,7 +79,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const loadProducts = async () => {
     if (!window.supabase) {
-      grid.innerHTML = '<p class="error">Configura Supabase en js/config.js</p>';
+      grid.innerHTML = '<p class="error">No hay conexion con la base de datos</p>';
       return;
     }
     const { data, error } = await supabase

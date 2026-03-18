@@ -149,7 +149,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   async function loadOrderDetails(order) {
     const { data: items } = await supabase
       .from('order_items')
-      .select('*, products(name, stock)')
+      .select('*, products(name, stock, image_url, price)')
       .eq('order_id', order.id);
     return items || [];
   }
@@ -190,8 +190,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       .map(
         (i) => `
       <div class="order-item">
-        <span>${i.products?.name || 'Producto'} x ${i.quantity}</span>
-        <span>${(parseFloat(i.price) * i.quantity).toFixed(2)} CUP</span>
+        <img src="${escapeAttr(i.products?.image_url || 'https://placehold.co/90x110/1a1a2e/eaeaea?text=Producto')}" alt="${escapeAttr(i.products?.name || 'Producto')}" class="order-item-img">
+        <div class="order-item-info">
+          <div class="order-item-name">${i.products?.name || 'Producto'}</div>
+          <div class="order-item-qty">Cantidad: ${i.quantity}</div>
+          <div class="order-item-price">${(parseFloat(i.price) * i.quantity).toFixed(2)} CUP</div>
+        </div>
       </div>
     `
       )
@@ -199,11 +203,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const deliveryInfo = order.delivery_requested && order.delivery_address
       ? `<p class="order-delivery"><strong>Domicilio:</strong> ${escapeHtml(order.delivery_address)}</p>`
-      : '';
+      : `<p class="order-delivery"><strong>Entrega:</strong> Recogida en tienda</p>`;
+    
+    const paymentInfo = order.transfer_reference 
+      ? `<p><strong>Pago:</strong> Transferencia · Ref: <strong>${order.transfer_reference}</strong></p>`
+      : `<p><strong>Pago:</strong> Efectivo</p>`;
+    
     const whatsappUrl = getWhatsAppUrl(order.user_phone);
     const msgCancelar = `Hola${order.user_name ? ' ' + order.user_name : ''}, te escribimos respecto a tu pedido en PaKas. Lamentamos informarte que hemos tenido que cancelar este pedido. Por favor, escríbenos si tienes dudas o si deseas realizar un nuevo pedido.`;
     const card = document.createElement('div');
     card.className = 'order-card';
+    card.setAttribute('role', 'button');
+    card.setAttribute('tabindex', '0');
+    card.setAttribute('data-order-id', order.id);
     card.innerHTML = `
       <div class="order-info">
         <div class="order-header">
@@ -211,16 +223,17 @@ document.addEventListener('DOMContentLoaded', async () => {
           <span class="status-badge status-pendiente">Pendiente</span>
         </div>
         <p>${order.user_name ? `<strong>${escapeHtml(order.user_name)}</strong>${order.user_phone ? ` · ${escapeHtml(order.user_phone)}` : ''}<br>` : ''}Total: ${parseFloat(order.total).toFixed(2)} CUP · ${new Date(order.created_at).toLocaleString('es')}</p>
-        ${order.transfer_reference ? `<p>Ref. transferencia: ${order.transfer_reference}</p>` : ''}
+        ${paymentInfo}
         ${deliveryInfo}
-        <div class="order-items">${itemsHtml}</div>
+        <div class="order-items order-items-preview">${itemsHtml.substring(0, 300)}...</div>
+        <button type="button" class="btn btn-link view-details-btn">Ver más detalles</button>
       </div>
       <div class="order-card-actions">
         <button type="button" class="btn-complete" data-id="${order.id}" aria-label="Aprobar pago" title="Aprobar pago">
           <span class="btn-icon-svg">${ICONS.check}</span>
           <span class="btn-text">Aprobar</span>
         </button>
-        <button type="button" class="btn-cancel" data-id="${order.id}" data-phone="${escapeHtml(order.user_phone || '')}" data-msg="${escapeHtml(msgCancelar)}" aria-label="Cancelar pago" title="Cancelar pago">
+        <button type="button" class="btn-cancel" data-id="${order.id}" data-phone="${escapeAttr(order.user_phone || '')}" data-msg="${escapeAttr(msgCancelar)}" aria-label="Cancelar pago" title="Cancelar pago">
           <span class="btn-icon-svg">${ICONS.x}</span>
           <span class="btn-text">Cancelar</span>
         </button>
@@ -251,8 +264,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       .map(
         (i) => `
       <div class="order-item">
-        <span>${i.products?.name || 'Producto'} x ${i.quantity}</span>
-        <span>${(parseFloat(i.price) * i.quantity).toFixed(2)} CUP</span>
+        <img src="${escapeAttr(i.products?.image_url || 'https://placehold.co/90x110/1a1a2e/eaeaea?text=Producto')}" alt="${escapeAttr(i.products?.name || 'Producto')}" class="order-item-img">
+        <div class="order-item-info">
+          <div class="order-item-name">${i.products?.name || 'Producto'}</div>
+          <div class="order-item-qty">Cantidad: ${i.quantity}</div>
+          <div class="order-item-price">${(parseFloat(i.price) * i.quantity).toFixed(2)} CUP</div>
+        </div>
       </div>
     `
       )
@@ -260,10 +277,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const deliveryInfoCompleted = order.delivery_requested && order.delivery_address
       ? `<p class="order-delivery"><strong>Domicilio:</strong> ${escapeHtml(order.delivery_address)}</p>`
-      : '';
+      : `<p class="order-delivery"><strong>Entrega:</strong> Recogida en tienda</p>`;
+    
+    const paymentInfoCompleted = order.transfer_reference 
+      ? `<p><strong>Pago:</strong> Transferencia · Ref: <strong>${order.transfer_reference}</strong></p>`
+      : `<p><strong>Pago:</strong> Efectivo</p>`;
+    
     const whatsappUrlCompleted = getWhatsAppUrl(order.user_phone);
     const card = document.createElement('div');
     card.className = 'order-card';
+    card.setAttribute('role', 'button');
+    card.setAttribute('tabindex', '0');
+    card.setAttribute('data-order-id', order.id);
     card.innerHTML = `
       <div class="order-info">
         <div class="order-header">
@@ -271,8 +296,10 @@ document.addEventListener('DOMContentLoaded', async () => {
           <span class="status-badge status-completado">Completado</span>
         </div>
         <p>${order.user_name ? `<strong>${escapeHtml(order.user_name)}</strong>${order.user_phone ? ` · ${escapeHtml(order.user_phone)}` : ''}<br>` : ''}Total: ${parseFloat(order.total).toFixed(2)} CUP · ${new Date(order.created_at).toLocaleString('es')}</p>
+        ${paymentInfoCompleted}
         ${deliveryInfoCompleted}
-        <div class="order-items">${itemsHtml}</div>
+        <div class="order-items order-items-preview">${itemsHtml.substring(0, 300)}...</div>
+        <button type="button" class="btn btn-link view-details-btn">Ver más detalles</button>
       </div>
       ${
         whatsappUrlCompleted
@@ -287,6 +314,113 @@ document.addEventListener('DOMContentLoaded', async () => {
     `;
     container.appendChild(card);
   }
+
+  // Modal para detalles del pedido
+  const orderDetailModal = document.getElementById('order-detail-modal');
+  const orderDetailBody = document.getElementById('order-detail-body');
+  const orderDetailBackdrop = document.querySelector('.order-detail-backdrop');
+  const orderDetailClose = document.querySelector('.order-detail-close');
+
+  function closeOrderDetailModal() {
+    orderDetailModal.classList.add('hidden');
+    document.body.style.overflow = '';
+  }
+
+  orderDetailClose.onclick = closeOrderDetailModal;
+  orderDetailBackdrop.onclick = closeOrderDetailModal;
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !orderDetailModal.classList.contains('hidden')) closeOrderDetailModal();
+  });
+
+  async function showOrderDetailModal(orderId) {
+    const order = [...pendientes, ...completados].find((o) => o.id === orderId);
+    if (!order) return;
+
+    const items = await loadOrderDetails(order);
+    const itemsDetailHtml = items
+      .map(
+        (i) => `
+      <div class="order-detail-item">
+        <img src="${escapeAttr(i.products?.image_url || 'https://placehold.co/120x150/1a1a2e/eaeaea?text=Producto')}" alt="${escapeAttr(i.products?.name || 'Producto')}" class="order-detail-item-img">
+        <div class="order-detail-item-info">
+          <h4>${i.products?.name || 'Producto'}</h4>
+          <p class="order-detail-item-qty">Cantidad: <strong>${i.quantity}</strong></p>
+          <p class="order-detail-item-price">Precio unitario: <strong>${parseFloat(i.price).toFixed(2)} CUP</strong></p>
+          <p class="order-detail-item-total">Subtotal: <strong>${(parseFloat(i.price) * i.quantity).toFixed(2)} CUP</strong></p>
+        </div>
+      </div>
+    `
+      )
+      .join('');
+
+    const deliveryInfoFull = order.delivery_requested && order.delivery_address
+      ? `<div class="order-detail-section">
+          <h3>Información de domicilio</h3>
+          <p>${escapeHtml(order.delivery_address)}</p>
+        </div>`
+      : '';
+
+    const cancelReasonHtml = order.cancel_reason
+      ? `<div class="order-detail-section">
+          <h3 style="color: var(--error);">Motivo de cancelación</h3>
+          <p>${escapeHtml(order.cancel_reason)}</p>
+        </div>`
+      : '';
+
+    orderDetailBody.innerHTML = `
+      <div class="order-detail-header">
+        <div>
+          <h2>Pedido ${order.id.slice(0, 8)}...</h2>
+          <span class="status-badge status-${order.status}">${order.status === 'pendiente' ? 'Pendiente' : order.status === 'completado' ? 'Completado' : 'Cancelado'}</span>
+        </div>
+        <p class="order-detail-date">${new Date(order.created_at).toLocaleString('es')}</p>
+      </div>
+
+      <div class="order-detail-section">
+        <h3>Cliente</h3>
+        <p><strong>${escapeHtml(order.user_name || 'N/A')}</strong></p>
+        ${order.user_phone ? `<p>Teléfono: ${escapeHtml(order.user_phone)}</p>` : ''}
+      </div>
+
+      <div class="order-detail-section">
+        <h3>Productos</h3>
+        <div class="order-detail-items">
+          ${itemsDetailHtml}
+        </div>
+      </div>
+
+      ${deliveryInfoFull}
+
+      <div class="order-detail-section">
+        <h3>Información de pago</h3>
+        <p>Total: <strong>${parseFloat(order.total).toFixed(2)} CUP</strong></p>
+        <p><strong>Método:</strong> ${order.transfer_reference ? 'Transferencia' : 'Efectivo'}</p>
+        ${order.transfer_reference ? `<p><strong>Código de confirmación:</strong> ${escapeHtml(order.transfer_reference)}</p>` : ''}
+        ${order.bank_details ? `<p><strong>Datos bancarios:</strong> ${escapeHtml(order.bank_details)}</p>` : ''}
+        ${order.notes ? `<p><strong>Notas:</strong> ${escapeHtml(order.notes)}</p>` : ''}
+      </div>
+
+      ${cancelReasonHtml}
+    `;
+
+    orderDetailModal.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+  }
+
+  container.querySelectorAll('.view-details-btn').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const orderId = btn.closest('.order-card').dataset.orderId;
+      showOrderDetailModal(orderId);
+    });
+  });
+
+  container.querySelectorAll('[data-order-id]').forEach((card) => {
+    card.addEventListener('click', () => {
+      const orderId = card.dataset.orderId;
+      showOrderDetailModal(orderId);
+    });
+  });
 
   container.querySelectorAll('.btn-complete').forEach((btn) => {
     btn.onclick = async () => {

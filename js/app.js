@@ -383,6 +383,17 @@ async function checkProfileComplete() {
   const hasName = profile?.full_name?.trim();
   const hasPhone = profile?.phone?.trim();
   if (hasName && hasPhone) return;
+
+  // Si no hay perfil completo, verificar metadatos del usuario
+  const metaName = user.user_metadata?.full_name?.trim();
+  const metaPhone = user.user_metadata?.phone?.trim();
+  const metaAddress = user.user_metadata?.address?.trim();
+  if (metaName && metaPhone) {
+    // Crear perfil automáticamente con datos de metadatos
+    await Auth.ensureProfile({ full_name: metaName, phone: metaPhone, address: metaAddress });
+    return;
+  }
+
   showProfileModal(user, profile);
 }
 

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Panel Admin - PaKas</title>
   <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/admin-orders.css">
 </head>
 <body>
   <nav class="navbar">
@@ -50,6 +51,15 @@
       </div>
     </section>
   </main>
+
+  <!-- Modal detalles del pedido -->
+  <div id="order-detail-modal" class="modal hidden">
+    <div class="modal-backdrop order-detail-backdrop"></div>
+    <div class="modal-content order-detail-content">
+      <button type="button" class="order-detail-close" aria-label="Cerrar">&times;</button>
+      <div id="order-detail-body"></div>
+    </div>
+  </div>
 
   <!-- Modal producto (nuevo / editar) -->
   <div id="product-form-modal" class="modal hidden">
