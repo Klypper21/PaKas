@@ -159,11 +159,15 @@
         (address || '').trim(),
         (phone || '').trim()
       );
-      if (error) { err.textContent = error; return; }
+      
+      if (error) { 
+        err.textContent = error;
+        UI?.toast?.(error, 'error');
+        return; 
+      }
 
       if (isEmail) {
-        // Registro con correo: Supabase NO crea sesión hasta que confirmes el email.
-        // Evitar "No hay sesión" y mostrar aviso de verificación.
+        // Registro con correo: mostrar confirmación
         if (window.UI?.openModal) {
           UI.openModal({
             title: 'Verifica tu correo',
@@ -200,16 +204,8 @@
         return;
       }
 
-      // Registro por teléfono: normalmente ya hay sesión y se puede guardar el perfil.
-      if (data?.user) {
-        const { error: profileErr } = await Auth.ensureProfile({
-          full_name: (name || '').trim(),
-          phone: (phone || '').trim(),
-          address: (address || '').trim(),
-        });
-        if (profileErr) { err.textContent = profileErr; return; }
-      }
-
+      // Registro por teléfono - sesión ya activa
+      // El perfil ya fue creado automáticamente por el trigger de Supabase
       const redirect = new URLSearchParams(location.search).get('redirect');
       if (await Auth.isAdmin()) location.href = 'admin.html';
       else location.href = redirect || 'index.html';
