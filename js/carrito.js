@@ -27,6 +27,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   const deliveryPickup = document.getElementById('delivery-pickup');
   const deliveryDelivery = document.getElementById('delivery-delivery');
 
+  // Modal de confirmación de cancelación
+  const cancelConfirmationModal = document.getElementById('cancel-confirmation-modal');
+  const btnCancelConfirmationNo = document.getElementById('btn-cancel-confirmation-no');
+  const btnCancelConfirmationYes = document.getElementById('btn-cancel-confirmation-yes');
+
   const notify = (msg, type = 'info') => {
     if (window.UI?.toast) UI.toast(msg, type);
     else console.log(type.toUpperCase() + ':', msg);
@@ -34,6 +39,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   let lastStockMap = new Map(); // productId -> { stock, name }
   let reservedStock = null; // { byProduct: { [productId]: qty } }
+  let modalStates = new Map(); // Para rastrear estados de modales
 
   async function rollbackReservedStock(byProduct) {
     if (!byProduct || !window.supabase) return;
@@ -446,12 +452,30 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   btnCancel?.addEventListener('click', async () => {
+    // Mostrar modal de confirmación en lugar de cancelar directamente
+    cancelConfirmationModal.classList.remove('hidden');
+  });
+
+  // Función para ejecutar la cancelación
+  async function executeCancel() {
     // Si se cancela el pedido, devolvemos la reserva de stock
     if (reservedStock && reservedStock.byProduct) {
       await rollbackReservedStock(reservedStock.byProduct);
       reservedStock = null;
     }
     modal.classList.add('hidden');
+    cancelConfirmationModal.classList.add('hidden');
+    notify('Pedido cancelado. Los productos han sido devueltos al stock.', 'info');
+  }
+
+  btnCancelConfirmationNo?.addEventListener('click', () => {
+    // No cancelar, mantener el modal de checkout abierto
+    cancelConfirmationModal.classList.add('hidden');
+  });
+
+  btnCancelConfirmationYes?.addEventListener('click', async () => {
+    // Confirmar la cancelación
+    await executeCancel();
   });
 
   btnConfirm?.addEventListener('click', async () => {
@@ -462,65 +486,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       notify('Completa tu perfil (nombre y teléfono) antes de realizar el pedido.', 'warning');
       return;
     }
-    await syncCartWithStock();
-    renderCart();
     const cart = Cart.get();
     if (!cart.length) return;
 
-    // Validar stock justo antes de crear el pedido (evitar sobreventa)
-    const byProductNeeded = {};
-    for (const i of cart) {
-      const qty = Number(i.quantity) || 0;
-      if (qty > 0) {
-        byProductNeeded[i.id] = (byProductNeeded[i.id] || 0) + qty;
-      }
-    }
-    const productIds = Object.keys(byProductNeeded);
-    if (!productIds.length) return;
-
-    const { data: currentProducts, error: stockCheckErr } = await supabase
-      .from('products')
-      .select('id,name,stock')
-      .in('id', productIds);
-
-    if (stockCheckErr) {
-      notify('No se pudo verificar el stock. Intenta de nuevo en unos segundos.', 'error');
-      return;
-    }
-
-    const insufficient = [];
-    const stockMapNow = new Map(
-      (currentProducts || []).map((p) => [String(p.id), { stock: Number(p.stock ?? 0), name: p.name }])
-    );
-    for (const pid of productIds) {
-      const meta = stockMapNow.get(String(pid));
-      const required = byProductNeeded[pid];
-      const available = Number(meta?.stock ?? 0);
-      if (required > available) {
-        insufficient.push({
-          id: pid,
-          name: (meta?.name || '').trim() || 'Producto',
-          required,
-          available,
-        });
-      }
-    }
-
-    if (insufficient.length) {
-      const lines = insufficient
-        .slice(0, 3)
-        .map((p) => `${p.name} (pedidos ${p.required}, disponibles ${p.available})`);
-      const extra = insufficient.length > lines.length ? ` y ${insufficient.length - lines.length} más` : '';
-      notify(
-        `No hay stock suficiente para completar el pedido. Ajusta tu carrito.\n${lines.join(
-          ' · '
-        )}${extra}`,
-        'error'
-      );
-      await syncCartWithStock();
-      renderCart();
-      return;
-    }
+    // El stock ya fue verificado y reservado al iniciar el pago (btnCheckout)
+    // No se realiza verificación nuevamente aquí
 
     const payment = getSelectedPaymentMethod();
     const delivery = getSelectedDeliveryMethod();
@@ -817,4 +787,35 @@ document.addEventListener('DOMContentLoaded', async () => {
       };
     }
   }
+
+  // -------- Manejo de navegación hacia atrás (botón atrás del navegador) --------
+  window.addEventListener('popstate', (e) => {
+    // Si el modal de checkout está abierto, mostrar confirmación
+    if (modal && !modal.classList.contains('hidden')) {
+      cancelConfirmationModal.classList.remove('hidden');
+      // Devolver el historial para que el botón atrás no tenga efecto
+      history.pushState(null, null, window.location.href);
+    }
+  });
+
+  // -------- Manejo de tecla Backspace --------
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Backspace') {
+      // Si el modal de checkout está abierto, tratarlo como cancelación
+      if (modal && !modal.classList.contains('hidden')) {
+        e.preventDefault();
+        cancelConfirmationModal.classList.remove('hidden');
+      }
+    }
+    // ESC para cerrar el modal de confirmación
+    if (e.key === 'Escape') {
+      if (cancelConfirmationModal && !cancelConfirmationModal.classList.contains('hidden')) {
+        cancelConfirmationModal.classList.add('hidden');
+        e.preventDefault();
+      }
+    }
+  });
+
+  // Empujar un estado inicial para que el popstate funcione correctamente
+  history.pushState(null, null, window.location.href);
 });

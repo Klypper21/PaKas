@@ -129,7 +129,7 @@
         </label>
 
         <div id="pickup-info" class="pickup-info hidden">
-          <p><strong>Recogida en tienda:</strong> Puedes pasar a recoger tu pedido en nuestra tienda.</p>
+          <p><strong>Recogida en tienda:</strong> Puedes pasar a recoger tu pedido en nuestra tienda en 48 horas.</p>
           <p class="pickup-muted">Dirección: <strong>Edicio 30 Apartamento 14 Olviso 2, Sancti Spíritus</strong> · Horario: 9:00–18:00</p>
         </div>
 
@@ -150,7 +150,7 @@
 
       <div id="cash-section" class="hidden">
         <p class="transfer-info checkout-alert">
-          <strong>Importante:</strong> Debes completar la acción en <strong>48 horas</strong> o el pedido se cancelará automáticamente.
+          <strong>Importante:</strong> Debes completar la acción en <strong>48 horas</strong> o el pedido se cancelará automáticamente una vez completado la confirmación por el administrador nuestro equipo se comunicará con ústed.
         </p>
       </div>
 
@@ -178,6 +178,18 @@
       <div class="modal-actions">
         <button id="btn-cancel-order" class="btn btn-outline">Cancelar</button>
         <button id="btn-confirm-order" class="btn btn-primary">Confirmar pedido</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de confirmación de cancelación -->
+  <div id="cancel-confirmation-modal" class="modal hidden">
+    <div class="modal-content modal-content--compact">
+      <h2>¿Estás seguro?</h2>
+      <p>Si cancelas ahora, los productos volverán al stock y tendrás que realizar el pedido de nuevo.</p>
+      <div class="modal-actions">
+        <button id="btn-cancel-confirmation-no" class="btn btn-primary">Seguir comprando</button>
+        <button id="btn-cancel-confirmation-yes" class="btn btn-outline">Sí, cancelar pedido</button>
       </div>
     </div>
   </div>

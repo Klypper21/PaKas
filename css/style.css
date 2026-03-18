@@ -1925,6 +1925,22 @@ body {
   letter-spacing: 0.02em;
 }
 
+.modal-content--compact {
+  max-width: 400px;
+  padding: 2rem;
+}
+
+.modal-content--compact h2 {
+  margin-bottom: 1.25rem;
+  font-size: 1.1rem;
+}
+
+.modal-content--compact p {
+  margin-bottom: 1.5rem;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
 .checkout-delivery {
   margin: 1rem 0;
   padding: 1rem 0;
