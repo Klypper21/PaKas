@@ -77,6 +77,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   loadPurchasedIds();
 
+  function formatProductDescription(product) {
+    let desc = '';
+    if (product.description) desc += product.description + ' ';
+    if (product.talla) desc += `Talla: ${product.talla}. `;
+    if (product.colores) desc += `Colores: ${product.colores}. `;
+    if (product.material) desc += `Material: ${product.material}. `;
+    if (product.recomendaciones) desc += `Recomendaciones: ${product.recomendaciones}. `;
+    return desc.trim() || 'Sin descripción.';
+  }
+
   const updateCartButtons = () => {
     // Update grid buttons
     document.querySelectorAll('.btn-add-cart').forEach(btn => {
@@ -171,7 +181,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!productCategories.length || !productCategories.includes(category)) return false;
       }
       if (!term) return true;
-      const haystack = `${p.name || ''} ${p.description || ''} ${p.category || ''}`.toLowerCase();
+      const haystack = `${p.name || ''} ${formatProductDescription(p)} ${p.category || ''}`.toLowerCase();
       return haystack.includes(term);
     });
 
@@ -230,6 +240,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           const created = p.created_at ? new Date(p.created_at).getTime() : 0;
           const isNew = created >= oneWeekAgo;
           const inCart = Cart.get().some(item => item.id === p.id);
+          const hasOptions = (p.colores && p.colores.trim()) || (p.talla && p.talla.trim());
           return `
       <div class="product-card product-card-clickable" data-id="${p.id}">
         <div class="img-wrap">
@@ -242,14 +253,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             <span class="stars-display">${renderStars(p.avg_rating || 0)}</span>
             <span class="rating-count">${p.reviews_count || 0} ${p.reviews_count === 1 ? 'reseña' : 'reseñas'}</span>
           </div>
-          <p>${escapeHtml(p.description || '')}</p>
+          <p>${escapeHtml(formatProductDescription(p))}</p>
           <span class="price">${parseFloat(p.price).toFixed(2)} CUP</span>
           <button class="btn ${inCart ? 'btn-outline in-cart' : 'btn-primary'} btn-add-cart" style="margin-top:0.75rem;width:100%"
             data-id="${p.id}"
             data-name="${escapeAttr(p.name || '')}"
             data-price="${p.price}"
             data-image="${escapeAttr(p.image_url || '')}"
-            data-out-of-stock="${(p.stock ?? 0) <= 0 ? '1' : '0'}">
+            data-out-of-stock="${(p.stock ?? 0) <= 0 ? '1' : '0'}"
+            data-has-options="${hasOptions ? '1' : '0'}">
             ${inCart ? 'En el carrito' : 'Añadir al carrito'}
           </button>
         </div>
@@ -284,7 +296,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         location.href = 'carrito.html';
         return;
       }
-
+      if (btn.dataset.hasOptions === '1') {
+        openProductModal(id);
+        return;
+      }
       const name = btn.dataset.name;
       const price = parseFloat(btn.dataset.price);
       const image = btn.dataset.image || '';
@@ -314,6 +329,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     const reviewLoginHint = document.getElementById('review-login-hint');
     const reviewFormFields = document.getElementById('review-form-fields');
     const reviewsList = document.getElementById('modal-reviews-list');
+    const modalColor = document.getElementById('modal-color');
+    const modalTalla = document.getElementById('modal-talla');
+    const modalMaterial = document.getElementById('modal-material');
+    const modalRecomendaciones = document.getElementById('modal-recomendaciones');
 
     modal.classList.remove('hidden');
     document.body.style.overflow = 'hidden';
@@ -410,6 +429,37 @@ document.addEventListener('DOMContentLoaded', async () => {
     title.textContent = product.name;
     category.textContent = product.category || '';
     desc.textContent = product.description || 'Sin descripción.';
+    if (modalMaterial) modalMaterial.textContent = product.material ? `Material: ${product.material}` : '';
+    if (modalRecomendaciones) modalRecomendaciones.textContent = product.recomendaciones ? `Recomendaciones: ${product.recomendaciones}` : '';
+
+    // Poblar colores
+    if (modalColor) {
+      modalColor.innerHTML = '<option value="">Seleccionar</option>';
+      if (product.colores) {
+        const colores = product.colores.split(',').map(c => c.trim()).filter(Boolean);
+        colores.forEach(color => {
+          const option = document.createElement('option');
+          option.value = color;
+          option.textContent = color;
+          modalColor.appendChild(option);
+        });
+      }
+    }
+
+    // Poblar tallas
+    if (modalTalla) {
+      modalTalla.innerHTML = '<option value="">Seleccionar</option>';
+      if (product.talla) {
+        const tallas = product.talla.split(',').map(t => t.trim()).filter(Boolean);
+        tallas.forEach(talla => {
+          const option = document.createElement('option');
+          option.value = talla;
+          option.textContent = talla;
+          modalTalla.appendChild(option);
+        });
+      }
+    }
+
     priceEl.textContent = parseFloat(product.price).toFixed(2) + ' CUP';
     stockEl.textContent =
       (product.stock ?? 10) > 0 ? `En stock (${product.stock})` : 'Agotado';
@@ -433,13 +483,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         location.href = 'carrito.html';
         return;
       }
+      const selectedColor = modalColor ? modalColor.value : '';
+      const selectedTalla = modalTalla ? modalTalla.value : '';
+      const hasOptions = (product.colores && product.colores.trim()) || (product.talla && product.talla.trim());
+      if (hasOptions && (!selectedColor || !selectedTalla)) {
+        const notify = (msg, type = 'info', opts = {}) => (window.UI?.toast ? UI.toast(msg, type, opts) : null);
+        notify('Por favor selecciona color y talla.', 'error');
+        return;
+      }
       (async () => {
         const notify = (msg, type = 'info', opts = {}) => (window.UI?.toast ? UI.toast(msg, type, opts) : null);
-        const res = await Cart.addWithStock(
-          { id: product.id, name: product.name, price: parseFloat(product.price), image_url: mainUrl },
-          1,
-          { notify }
-        );
+        const item = {
+          id: product.id,
+          name: product.name,
+          price: parseFloat(product.price),
+          image_url: mainUrl,
+          options: hasOptions ? { color: selectedColor, talla: selectedTalla } : null
+        };
+        const res = await Cart.addWithStock(item, 1, { notify });
         if (res.ok) notify('Producto añadido al <span class="toast-carrito-link">carrito</span>', 'success', { allowHtml: true });
       })();
     };

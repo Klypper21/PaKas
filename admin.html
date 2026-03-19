@@ -61,6 +61,15 @@
     </div>
   </div>
 
+  <!-- Modal de carga -->
+  <div id="loading-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content loading-content">
+      <div class="spinner"></div>
+      <p>Subiendo imágenes...</p>
+    </div>
+  </div>
+
   <!-- Modal producto (nuevo / editar) -->
   <div id="product-form-modal" class="modal hidden">
     <div class="modal-backdrop product-form-backdrop"></div>
@@ -72,8 +81,16 @@
         <input type="hidden" id="product-extra-images-existing" value="[]">
         <label for="product-name">Nombre</label>
         <input type="text" id="product-name" required placeholder="Nombre del producto">
+        <label for="product-talla">Talla</label>
+        <input type="text" id="product-talla" placeholder="Ej. S, M, L, XL">
+        <label for="product-colores">Colores</label>
+        <input type="text" id="product-colores" placeholder="Ej. Rojo, Azul, Negro">
+        <label for="product-material">Material</label>
+        <input type="text" id="product-material" placeholder="Ej. Algodón 100%">
+        <label for="product-recomendaciones">Recomendaciones</label>
+        <textarea id="product-recomendaciones" rows="2" placeholder="Cuidados, lavado, etc."></textarea>
         <label for="product-description">Descripción</label>
-        <textarea id="product-description" rows="3" placeholder="Descripción"></textarea>
+        <textarea id="product-description" rows="3" placeholder="Descripción general del producto"></textarea>
         <label for="product-category">Categoría</label>
         <input type="text" id="product-category" placeholder="Ej. Camisetas">
         <label for="product-price">Precio (CUP)</label>

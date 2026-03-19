@@ -37,6 +37,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     else console.log(type.toUpperCase() + ':', msg);
   };
 
+  function formatProductDescription(product) {
+    let desc = '';
+    if (product.description) desc += product.description + ' ';
+    if (product.talla) desc += `Talla: ${product.talla}. `;
+    if (product.colores) desc += `Colores: ${product.colores}. `;
+    if (product.material) desc += `Material: ${product.material}. `;
+    if (product.recomendaciones) desc += `Recomendaciones: ${product.recomendaciones}. `;
+    return desc.trim() || 'Sin descripción.';
+  }
+
   let lastStockMap = new Map(); // productId -> { stock, name }
   let reservedStock = null; // { byProduct: { [productId]: qty } }
   let modalStates = new Map(); // Para rastrear estados de modales
@@ -254,6 +264,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             <img src="${img}" alt="">
             <div class="details">
               <h3>${item.name}</h3>
+              ${item.options ? `<p>Color: ${item.options.color}, Talla: ${item.options.talla}</p>` : ''}
               <p>${unit.toFixed(2)} CUP x ${qty}</p>
               ${stockLabel ? `<p class="cart-stock-hint">${stockLabel}</p>` : ''}
             </div>

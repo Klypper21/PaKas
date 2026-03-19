@@ -25,6 +25,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     else console.log(type.toUpperCase() + ':', msg);
   };
 
+  function formatProductDescription(product) {
+    let desc = '';
+    if (product.description) desc += product.description + ' ';
+    if (product.talla) desc += `Talla: ${product.talla}. `;
+    if (product.colores) desc += `Colores: ${product.colores}. `;
+    if (product.material) desc += `Material: ${product.material}. `;
+    if (product.recomendaciones) desc += `Recomendaciones: ${product.recomendaciones}. `;
+    return desc.trim() || 'Sin descripción.';
+  }
+
   // Iconos inline (evita dependencias externas)
   const ICONS = {
     check: `
@@ -63,6 +73,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   let productForm;
   let productFormId;
   let productName;
+  let productTalla;
+  let productColores;
+  let productMaterial;
+  let productRecomendaciones;
   let productDescription;
   let productCategory;
   let productPrice;
@@ -71,6 +85,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   let productImageFile;
   let productExtraImages;
   let productExtraImagesExisting;
+  let loadingModal;
 
   function ensureAdminProductElements() {
     if (adminProductsGrid && productFormModal && productForm) return;
@@ -82,6 +97,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     productForm = document.getElementById('product-form');
     productFormId = document.getElementById('product-form-id');
     productName = document.getElementById('product-name');
+    productTalla = document.getElementById('product-talla');
+    productColores = document.getElementById('product-colores');
+    productMaterial = document.getElementById('product-material');
+    productRecomendaciones = document.getElementById('product-recomendaciones');
     productDescription = document.getElementById('product-description');
     productCategory = document.getElementById('product-category');
     productPrice = document.getElementById('product-price');
@@ -90,6 +109,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     productImageFile = document.getElementById('product-image-file');
     productExtraImages = document.getElementById('product-extra-images');
     productExtraImagesExisting = document.getElementById('product-extra-images-existing');
+    loadingModal = document.getElementById('loading-modal');
   }
 
   // ——— Pestañas ———
@@ -526,30 +546,48 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   async function uploadImageFile(file, folder = 'products') {
     if (!supabase || !file) return null;
-    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
-    const fileName = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-    const { data, error } = await supabase.storage
-      .from('product-images')
-      .upload(fileName, file, {
-        cacheControl: '3600',
-        upsert: false,
-      });
-    if (error) {
-      console.error('Error subiendo imagen', error);
-      notify('Error al subir una imagen: ' + error.message, 'error');
+    
+    try {
+      // Comprimir la imagen primero
+      const compressedBlob = await compressImage(file);
+      
+      // Crear un nuevo File con el blob comprimido
+      const compressedFile = new File([compressedBlob], file.name.replace(/\.[^/.]+$/, '.webp'), { type: 'image/webp' });
+      
+      const fileName = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2)}.webp`;
+      const { data, error } = await supabase.storage
+        .from('product-images')
+        .upload(fileName, compressedFile, {
+          cacheControl: '3600',
+          upsert: false,
+        });
+      if (error) {
+        console.error('Error subiendo imagen', error);
+        notify('Error al subir una imagen: ' + error.message, 'error');
+        return null;
+      }
+      const { data: publicData } = supabase.storage
+        .from('product-images')
+        .getPublicUrl(data.path);
+      return publicData?.publicUrl || null;
+    } catch (error) {
+      console.error('Error procesando imagen', error);
+      notify('Error al procesar la imagen: ' + error.message, 'error');
       return null;
     }
-    const { data: publicData } = supabase.storage
-      .from('product-images')
-      .getPublicUrl(data.path);
-    return publicData?.publicUrl || null;
   }
 
   function openProductFormModal(product = null) {
     productFormId.value = product ? product.id : '';
     productFormTitle.textContent = product ? 'Editar producto' : 'Nuevo producto';
     productName.value = product?.name ?? '';
+
     productDescription.value = product?.description ?? '';
+    productTalla.value = product?.talla ?? '';
+    productColores.value = product?.colores ?? '';
+    productMaterial.value = product?.material ?? '';
+    productRecomendaciones.value = product?.recomendaciones ?? '';
+
     productCategory.value = product?.category ?? '';
     productPrice.value = product != null ? product.price : '';
     productStock.value = product != null ? (product.stock ?? 0) : 0;
@@ -580,6 +618,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   productForm.addEventListener('submit', async (e) => {
     e.preventDefault();
+    ensureAdminProductElements();
+    loadingModal.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+
     const id = productFormId.value.trim();
 
     // Imagen principal: prioridad al archivo subido; si no, a la URL escrita
@@ -610,7 +652,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const payload = {
       name: productName.value.trim(),
-      description: productDescription.value.trim() || null,
+      description: productDescription.value.trim(),
+      colores: productColores.value.trim(),
+      talla: productTalla.value.trim(),
+      material: productMaterial.value.trim(),
+      recomendaciones: productRecomendaciones.value.trim(),
       category: productCategory.value.trim() || null,
       price: parseFloat(productPrice.value) || 0,
       stock: parseInt(productStock.value, 10) || 0,
@@ -621,15 +667,21 @@ document.addEventListener('DOMContentLoaded', async () => {
       const { error: err } = await supabase.from('products').update(payload).eq('id', id);
       if (err) {
         notify('Error al actualizar: ' + err.message, 'error');
+        loadingModal.classList.add('hidden');
+        document.body.style.overflow = '';
         return;
       }
     } else {
       const { error: err } = await supabase.from('products').insert(payload);
       if (err) {
         notify('Error al crear: ' + err.message, 'error');
+        loadingModal.classList.add('hidden');
+        document.body.style.overflow = '';
         return;
       }
     }
+    loadingModal.classList.add('hidden');
+    document.body.style.overflow = '';
     closeProductFormModal();
     loadAdminProducts();
   });
@@ -665,6 +717,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           <h3>${escapeHtml(p.name)}</h3>
           <p class="admin-product-price">${parseFloat(p.price).toFixed(2)} CUP</p>
           <p class="admin-product-stock">Stock: ${p.stock ?? 0}</p>
+          <p class="admin-product-desc">${escapeHtml(formatProductDescription(p))}</p>
           <div class="admin-product-actions">
             <button type="button" class="btn btn-outline btn-edit-product" data-id="${p.id}">Editar</button>
             <button type="button" class="btn btn-outline btn-delete-product" data-id="${p.id}" aria-label="Eliminar producto" title="Eliminar">
@@ -720,5 +773,34 @@ document.addEventListener('DOMContentLoaded', async () => {
       .replace(/&/g, '&amp;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  // Función para comprimir imágenes usando canvas
+  async function compressImage(file) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Calcular nuevo tamaño manteniendo proporción, ancho máximo 1080px
+        let { width, height } = img;
+        if (width > 1080) {
+          height = (height * 1080) / width;
+          width = 1080;
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        
+        // Dibujar la imagen en el canvas
+        ctx.drawImage(img, 0, 0, width, height);
+        
+        // Convertir a Blob en formato WebP con calidad 0.8
+        canvas.toBlob(resolve, 'image/webp', 0.8);
+      };
+      img.onerror = reject;
+      img.src = URL.createObjectURL(file);
+    });
   }
 });

@@ -1787,6 +1787,17 @@ body {
   margin: 0;
 }
 
+.admin-product-desc {
+  font-size: 0.9rem;
+  color: var(--text);
+  margin: 0.25rem 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .admin-product-info .btn-edit-product {
   margin-top: 0.5rem;
   width: 100%;
@@ -2469,6 +2480,39 @@ body {
   font-size: 1rem;
   line-height: 1.6;
   margin-bottom: 1.5rem;
+}
+
+.product-options {
+  margin-bottom: 1.5rem;
+}
+
+.product-options .option-group {
+  margin-bottom: 1rem;
+}
+
+.product-options label {
+  display: block;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 0.5rem;
+}
+
+.product-options select {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.product-modal-material,
+.product-modal-recomendaciones {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin-bottom: 0.5rem;
 }
 
 .product-modal-price {
