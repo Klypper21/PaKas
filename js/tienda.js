@@ -241,6 +241,8 @@ document.addEventListener('DOMContentLoaded', async () => {
           const isNew = created >= oneWeekAgo;
           const inCart = Cart.get().some(item => item.id === p.id);
           const hasOptions = (p.colores && p.colores.trim()) || (p.talla && p.talla.trim());
+          // Renderizar paleta de colores
+          const colorsPalette = ColorPalette ? ColorPalette.renderColorsPaletteForProduct(p.colores) : '';
           return `
       <div class="product-card product-card-clickable" data-id="${p.id}">
         <div class="img-wrap">
@@ -254,6 +256,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             <span class="rating-count">${p.reviews_count || 0} ${p.reviews_count === 1 ? 'reseña' : 'reseñas'}</span>
           </div>
           <p>${escapeHtml(formatProductDescription(p))}</p>
+          ${colorsPalette}
           <span class="price">${parseFloat(p.price).toFixed(2)} CUP</span>
           <button class="btn ${inCart ? 'btn-outline in-cart' : 'btn-primary'} btn-add-cart" style="margin-top:0.75rem;width:100%"
             data-id="${p.id}"
@@ -436,11 +439,51 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (modalColor) {
       modalColor.innerHTML = '<option value="">Seleccionar</option>';
       if (product.colores) {
-        const colores = product.colores.split(',').map(c => c.trim()).filter(Boolean);
-        colores.forEach(color => {
+        // Intentar parsear como JSON o como texto simple
+        let colorsArray = [];
+        try {
+          colorsArray = JSON.parse(product.colores);
+          if (!Array.isArray(colorsArray)) colorsArray = [];
+        } catch {
+          // Formato de texto legado (Rojo, Azul, Negro)
+          const names = product.colores.split(',').map(c => c.trim()).filter(Boolean);
+          colorsArray = names.map(name => {
+            const defaultColors = ColorPalette?.getDefaultColors?.() || [];
+            const color = defaultColors.find(c => c.name.toLowerCase() === name.toLowerCase());
+            return color || { name, hex: '#999999' };
+          });
+        }
+
+        // Renderizar paleta visual
+        const paleteContainer = document.getElementById('modal-colors-palette');
+        if (paleteContainer) {
+          paleteContainer.innerHTML = colorsArray.map(color => `
+            <div class="modal-color-option" 
+                 data-color-value="${color.name || color.hex}"
+                 title="${color.name}">
+              <div class="modal-color-circle" style="background-color: ${color.hex};"></div>
+              <span>${color.name}</span>
+            </div>
+          `).join('');
+
+          // Agregar event listeners a las opciones de color
+          paleteContainer.querySelectorAll('.modal-color-option').forEach(option => {
+            option.addEventListener('click', () => {
+              const colorValue = option.dataset.colorValue;
+              modalColor.value = colorValue;
+              // Actualizar selección visual
+              paleteContainer.querySelectorAll('.modal-color-option').forEach(opt => {
+                opt.classList.toggle('selected', opt === option);
+              });
+            });
+          });
+        }
+
+        // También llenar el select como fallback
+        colorsArray.forEach(color => {
           const option = document.createElement('option');
-          option.value = color;
-          option.textContent = color;
+          option.value = color.name || color.hex;
+          option.textContent = color.name || color.hex;
           modalColor.appendChild(option);
         });
       }

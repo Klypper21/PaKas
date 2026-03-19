@@ -599,6 +599,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     if (productImageFile) productImageFile.value = '';
     if (productExtraImages) productExtraImages.value = '';
+    
+    // Inicializar color picker
+    if (ColorPalette) {
+      ColorPalette.loadColors(product?.colores ?? '');
+    }
+    
     productFormModal.classList.remove('hidden');
     document.body.style.overflow = 'hidden';
   }
@@ -653,7 +659,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const payload = {
       name: productName.value.trim(),
       description: productDescription.value.trim(),
-      colores: productColores.value.trim(),
+      colores: (ColorPalette?.colorsToJSON(ColorPalette?.getSelectedColors()) || productColores.value.trim()),
       talla: productTalla.value.trim(),
       material: productMaterial.value.trim(),
       recomendaciones: productRecomendaciones.value.trim(),
