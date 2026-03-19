@@ -77,6 +77,26 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   loadPurchasedIds();
 
+  const updateCartButtons = () => {
+    // Update grid buttons
+    document.querySelectorAll('.btn-add-cart').forEach(btn => {
+      const productId = btn.dataset.id;
+      const inCart = Cart.get().some(item => item.id === productId);
+      btn.className = `btn ${inCart ? 'btn-outline' : 'btn-primary'} btn-add-cart`;
+      if (btn.style.width) btn.style.width = '100%'; // for grid
+      btn.disabled = inCart;
+      btn.textContent = inCart ? 'En el carrito' : 'Añadir al carrito';
+    });
+    // Update modal button if open
+    const modalBtn = document.getElementById('modal-add-cart');
+    if (modalBtn && modalBtn.dataset.id) {
+      const inCart = Cart.get().some(item => item.id === modalBtn.dataset.id);
+      modalBtn.className = `btn ${inCart ? 'btn-outline' : 'btn-primary'} btn-block`;
+      modalBtn.disabled = inCart;
+      modalBtn.textContent = inCart ? 'En el carrito' : 'Añadir al carrito';
+    }
+  };
+
   const loadProducts = async () => {
     if (!window.supabase) {
       grid.innerHTML = '<p class="error">No hay conexion con la base de datos</p>';
@@ -206,6 +226,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         (p) => {
           const created = p.created_at ? new Date(p.created_at).getTime() : 0;
           const isNew = created >= oneWeekAgo;
+          const inCart = Cart.get().some(item => item.id === p.id);
           return `
       <div class="product-card product-card-clickable" data-id="${p.id}">
         <div class="img-wrap">
@@ -220,12 +241,13 @@ document.addEventListener('DOMContentLoaded', async () => {
           </div>
           <p>${escapeHtml(p.description || '')}</p>
           <span class="price">${parseFloat(p.price).toFixed(2)} CUP</span>
-          <button class="btn btn-primary btn-add-cart" style="margin-top:0.75rem;width:100%"
+          <button class="btn ${inCart ? 'btn-outline' : 'btn-primary'} btn-add-cart" style="margin-top:0.75rem;width:100%"
             data-id="${p.id}"
             data-name="${escapeAttr(p.name || '')}"
             data-price="${p.price}"
-            data-image="${escapeAttr(p.image_url || '')}">
-            Añadir al carrito
+            data-image="${escapeAttr(p.image_url || '')}"
+            ${inCart ? 'disabled' : ''}>
+            ${inCart ? 'En el carrito' : 'Añadir al carrito'}
           </button>
         </div>
       </div>
@@ -338,9 +360,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     addCartBtn.dataset.name = product.name;
     addCartBtn.dataset.price = product.price;
     addCartBtn.dataset.image = mainUrl;
-    addCartBtn.disabled = (product.stock ?? 10) <= 0;
+    const inCart = Cart.get().some(item => item.id === product.id);
+    addCartBtn.className = `btn ${inCart ? 'btn-outline' : 'btn-primary'} btn-block`;
+    addCartBtn.disabled = (product.stock ?? 10) <= 0 || inCart;
+    addCartBtn.textContent = inCart ? 'En el carrito' : 'Añadir al carrito';
     addCartBtn.onclick = (ev) => {
       ev.preventDefault();
+      if (inCart) return;
       (async () => {
         const notify = (msg, type = 'info') => (window.UI?.toast ? UI.toast(msg, type) : null);
         const res = await Cart.addWithStock(
@@ -491,6 +517,27 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.querySelector('.product-modal-close').onclick = closeProductModal;
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeProductModal();
+  });
+
+  // Update buttons when cart changes
+  window.addEventListener('cartUpdated', () => {
+    // Update grid buttons
+    document.querySelectorAll('.btn-add-cart').forEach(btn => {
+      const productId = btn.dataset.id;
+      const inCart = Cart.get().some(item => item.id === productId);
+      btn.className = `btn ${inCart ? 'btn-outline' : 'btn-primary'} btn-add-cart`;
+      if (btn.style.width) btn.style.width = '100%'; // for grid
+      btn.disabled = inCart;
+      btn.textContent = inCart ? 'En el carrito' : 'Añadir al carrito';
+    });
+    // Update modal button if open
+    const modalBtn = document.getElementById('modal-add-cart');
+    if (modalBtn && modalBtn.dataset.id) {
+      const inCart = Cart.get().some(item => item.id === modalBtn.dataset.id);
+      modalBtn.className = `btn ${inCart ? 'btn-outline' : 'btn-primary'} btn-block`;
+      modalBtn.disabled = inCart;
+      modalBtn.textContent = inCart ? 'En el carrito' : 'Añadir al carrito';
+    }
   });
 
   const suggestionsEl = document.getElementById('search-suggestions');

@@ -668,6 +668,7 @@ const Cart = {
   set(items) {
     this._saveToDB(items);
     updateCartCount?.();
+    window.dispatchEvent(new CustomEvent('cartUpdated'));
   },
 
   add(product, quantity = 1) {
@@ -681,6 +682,7 @@ const Cart = {
     
     // Guardar en BD de forma asincrónica sin esperar (fire-and-forget)
     this._saveToDB(cart).catch(e => console.error('Error saving to DB:', e));
+    window.dispatchEvent(new CustomEvent('cartUpdated'));
   },
 
   async getStock(productId) {
@@ -850,11 +852,13 @@ const Cart = {
     localStorage.setItem('cart', JSON.stringify(cart));
     updateCartCount?.();
     this._saveToDB(cart).catch(e => console.error('Error saving to DB:', e));
+    window.dispatchEvent(new CustomEvent('cartUpdated'));
   },
 
   clear() {
     localStorage.setItem('cart', JSON.stringify([]));
     updateCartCount?.();
     this._saveToDB([]).catch(e => console.error('Error saving to DB:', e));
+    window.dispatchEvent(new CustomEvent('cartUpdated'));
   }
 };
