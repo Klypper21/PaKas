@@ -149,10 +149,12 @@
       <button class="product-modal-close" aria-label="Cerrar">&times;</button>
       <div class="product-modal-body">
         <div class="product-modal-gallery">
-          <div class="product-modal-main-img">
-            <img id="modal-main-img" src="" alt="">
+          <div class="product-modal-carousel">
+            <div id="modal-carousel-inner" class="product-modal-carousel-inner">
+              <!-- Images will be inserted here -->
+            </div>
+            <div id="modal-carousel-indicators" class="product-modal-carousel-indicators"></div>
           </div>
-          <div id="modal-thumbs" class="product-modal-thumbs"></div>
         </div>
         <div class="product-modal-info">
           <h2 id="modal-title"></h2>
@@ -175,6 +177,10 @@
               </div>
             </div>
             <div id="modal-reviews-list" class="reviews-list"></div>
+          </section>
+          <section class="product-modal-recommendations">
+            <h3>Productos relacionados</h3>
+            <div id="modal-recommendations" class="recommendations-grid"></div>
           </section>
         </div>
       </div>

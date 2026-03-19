@@ -88,16 +88,41 @@ function initTopNavActiveLink() {
     el.className = `toast toast--${type}`;
     el.setAttribute('role', 'status');
     el.setAttribute('aria-live', 'polite');
-    el.innerHTML = `
-      <div class="toast__body">${escapeHtml(message)}</div>
-      <button type="button" class="toast__close" aria-label="Cerrar">&times;</button>
-    `;
+
+    const allowHtml = opts.allowHtml === true;
+    const body = document.createElement('div');
+    body.className = 'toast__body';
+    if (allowHtml) {
+      body.innerHTML = message;
+    } else {
+      body.textContent = message;
+    }
+    el.appendChild(body);
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'toast__close';
+    closeBtn.setAttribute('aria-label', 'Cerrar');
+    closeBtn.innerHTML = '&times;';
+    el.appendChild(closeBtn);
+
     root.appendChild(el);
     const close = () => {
       el.classList.add('toast--hide');
       setTimeout(() => el.remove(), 180);
     };
-    el.querySelector('.toast__close')?.addEventListener('click', close);
+    closeBtn.addEventListener('click', close);
+
+    if (allowHtml) {
+      const link = el.querySelector('.toast-carrito-link');
+      if (link) {
+        link.addEventListener('click', () => {
+          location.href = 'carrito.html';
+        });
+        link.style.cursor = 'pointer';
+      }
+    }
+
     if (ttl > 0) setTimeout(close, ttl);
   }
 

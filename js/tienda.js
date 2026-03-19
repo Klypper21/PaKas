@@ -82,26 +82,29 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.querySelectorAll('.btn-add-cart').forEach(btn => {
       const productId = btn.dataset.id;
       const inCart = Cart.get().some(item => item.id === productId);
-      btn.className = `btn ${inCart ? 'btn-outline' : 'btn-primary'} btn-add-cart`;
+      const outOfStock = btn.dataset.outOfStock === '1';
+      btn.className = `btn ${inCart ? 'btn-outline in-cart' : 'btn-primary'} btn-add-cart`;
       if (btn.style.width) btn.style.width = '100%'; // for grid
-      btn.disabled = inCart;
+      btn.dataset.inCart = inCart ? '1' : '0';
       btn.textContent = inCart ? 'En el carrito' : 'Añadir al carrito';
+      btn.title = inCart ? 'Ir al carrito' : '';
+      btn.disabled = outOfStock;
     });
+
     // Update modal button if open
     const modalBtn = document.getElementById('modal-add-cart');
     if (modalBtn && modalBtn.dataset.id) {
       const inCart = Cart.get().some(item => item.id === modalBtn.dataset.id);
-      modalBtn.className = `btn ${inCart ? 'btn-outline' : 'btn-primary'} btn-block`;
-      modalBtn.disabled = inCart;
+      modalBtn.className = `btn ${inCart ? 'btn-outline in-cart' : 'btn-primary'} btn-block`;
+      modalBtn.dataset.inCart = inCart ? '1' : '0';
       modalBtn.textContent = inCart ? 'En el carrito' : 'Añadir al carrito';
+      modalBtn.title = inCart ? 'Ir al carrito' : '';
+      // keep disabled only if out of stock
+      modalBtn.disabled = modalBtn.dataset.outOfStock === '1';
     }
   };
 
   const loadProducts = async () => {
-    if (!window.supabase) {
-      grid.innerHTML = '<p class="error">No hay conexion con la base de datos</p>';
-      return;
-    }
     const { data, error } = await supabase
       .from('products')
       .select('*')
@@ -241,12 +244,12 @@ document.addEventListener('DOMContentLoaded', async () => {
           </div>
           <p>${escapeHtml(p.description || '')}</p>
           <span class="price">${parseFloat(p.price).toFixed(2)} CUP</span>
-          <button class="btn ${inCart ? 'btn-outline' : 'btn-primary'} btn-add-cart" style="margin-top:0.75rem;width:100%"
+          <button class="btn ${inCart ? 'btn-outline in-cart' : 'btn-primary'} btn-add-cart" style="margin-top:0.75rem;width:100%"
             data-id="${p.id}"
             data-name="${escapeAttr(p.name || '')}"
             data-price="${p.price}"
             data-image="${escapeAttr(p.image_url || '')}"
-            ${inCart ? 'disabled' : ''}>
+            data-out-of-stock="${(p.stock ?? 0) <= 0 ? '1' : '0'}">
             ${inCart ? 'En el carrito' : 'Añadir al carrito'}
           </button>
         </div>
@@ -255,6 +258,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       )
       .join('');
+
+    updateCartButtons();
   };
 
   function escapeHtml(str) {
@@ -274,13 +279,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (btn) {
       e.stopPropagation();
       const id = btn.dataset.id;
+      const inCart = Cart.get().some(item => item.id === id);
+      if (inCart) {
+        location.href = 'carrito.html';
+        return;
+      }
+
       const name = btn.dataset.name;
       const price = parseFloat(btn.dataset.price);
       const image = btn.dataset.image || '';
       (async () => {
-        const notify = (msg, type = 'info') => (window.UI?.toast ? UI.toast(msg, type) : null);
+        const notify = (msg, type = 'info', opts = {}) => (window.UI?.toast ? UI.toast(msg, type, opts) : null);
         const res = await Cart.addWithStock({ id, name, price, image_url: image }, 1, { notify });
-        if (res.ok) notify('Producto añadido al carrito', 'success');
+        if (res.ok) notify('Producto añadido al <span class="toast-carrito-link">carrito</span>', 'success', { allowHtml: true });
       })();
       return;
     }
@@ -332,20 +343,68 @@ document.addEventListener('DOMContentLoaded', async () => {
       : [];
     const allImages = [mainUrl, ...extraImages.filter((u) => u && u !== mainUrl)];
 
-    mainImg.src = allImages[0];
-    mainImg.alt = product.name;
-    thumbs.innerHTML = allImages
-      .map(
-        (url, i) =>
-          `<button class="thumb ${i === 0 ? 'active' : ''}" type="button" data-index="${i}"><img src="${url}" alt=""></button>`
-      )
-      .join('');
-    thumbs.querySelectorAll('.thumb').forEach((t) => {
-      t.onclick = () => {
-        thumbs.querySelectorAll('.thumb').forEach((x) => x.classList.remove('active'));
-        t.classList.add('active');
-        mainImg.src = t.querySelector('img').src;
-      };
+    const carouselInner = document.getElementById('modal-carousel-inner');
+    const indicators = document.getElementById('modal-carousel-indicators');
+    carouselInner.innerHTML = allImages.map((url, i) => `<img src="${url}" alt="${product.name} - ${i + 1}">`).join('');
+    indicators.innerHTML = allImages.map((_, i) => `<div class="indicator ${i === 0 ? 'active' : ''}" data-index="${i}"></div>`).join('');
+
+    let currentIndex = 0;
+    const totalImages = allImages.length;
+
+    function updateCarousel() {
+      carouselInner.style.transform = `translateX(-${currentIndex * 100}%)`;
+      indicators.querySelectorAll('.indicator').forEach((ind, i) => {
+        ind.classList.toggle('active', i === currentIndex);
+      });
+    }
+
+    // Touch and mouse events for swipe
+    let startX = 0;
+    let isDragging = false;
+
+    function startDrag(clientX) {
+      startX = clientX;
+      isDragging = true;
+    }
+
+    function moveDrag(clientX) {
+      if (!isDragging) return;
+      const diff = startX - clientX;
+      if (Math.abs(diff) > 50) {
+        if (diff > 0 && currentIndex < totalImages - 1) {
+          currentIndex++;
+        } else if (diff < 0 && currentIndex > 0) {
+          currentIndex--;
+        }
+        updateCarousel();
+        isDragging = false;
+      }
+    }
+
+    function endDrag() {
+      isDragging = false;
+    }
+
+    carouselInner.addEventListener('touchstart', (e) => startDrag(e.touches[0].clientX));
+    carouselInner.addEventListener('touchmove', (e) => moveDrag(e.touches[0].clientX));
+    carouselInner.addEventListener('touchend', endDrag);
+
+    carouselInner.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      startDrag(e.clientX);
+    });
+    carouselInner.addEventListener('mousemove', (e) => {
+      if (isDragging) moveDrag(e.clientX);
+    });
+    carouselInner.addEventListener('mouseup', endDrag);
+    carouselInner.addEventListener('mouseleave', endDrag);
+
+    // Click on indicators
+    indicators.addEventListener('click', (e) => {
+      if (e.target.classList.contains('indicator')) {
+        currentIndex = parseInt(e.target.dataset.index);
+        updateCarousel();
+      }
     });
 
     title.textContent = product.name;
@@ -361,20 +420,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     addCartBtn.dataset.price = product.price;
     addCartBtn.dataset.image = mainUrl;
     const inCart = Cart.get().some(item => item.id === product.id);
-    addCartBtn.className = `btn ${inCart ? 'btn-outline' : 'btn-primary'} btn-block`;
-    addCartBtn.disabled = (product.stock ?? 10) <= 0 || inCart;
+    addCartBtn.dataset.inCart = inCart ? '1' : '0';
+    addCartBtn.className = `btn ${inCart ? 'btn-outline in-cart' : 'btn-primary'} btn-block`;
+    const outOfStock = (product.stock ?? 10) <= 0;
+    addCartBtn.disabled = outOfStock;
     addCartBtn.textContent = inCart ? 'En el carrito' : 'Añadir al carrito';
+    addCartBtn.title = inCart ? 'Ir al carrito' : '';
     addCartBtn.onclick = (ev) => {
       ev.preventDefault();
-      if (inCart) return;
+      const inCartNow = Cart.get().some(item => item.id === product.id);
+      if (inCartNow) {
+        location.href = 'carrito.html';
+        return;
+      }
       (async () => {
-        const notify = (msg, type = 'info') => (window.UI?.toast ? UI.toast(msg, type) : null);
+        const notify = (msg, type = 'info', opts = {}) => (window.UI?.toast ? UI.toast(msg, type, opts) : null);
         const res = await Cart.addWithStock(
           { id: product.id, name: product.name, price: parseFloat(product.price), image_url: mainUrl },
           1,
           { notify }
         );
-        if (res.ok) notify('Producto añadido al carrito', 'success');
+        if (res.ok) notify('Producto añadido al <span class="toast-carrito-link">carrito</span>', 'success', { allowHtml: true });
       })();
     };
 
@@ -428,6 +494,38 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!reviews?.length) {
       reviewsList.innerHTML = '<p class="no-reviews">Aún no hay reseñas. ¡Sé el primero en opinar!</p>';
     }
+
+    // Recommendations
+    const recommendationsEl = document.getElementById('modal-recommendations');
+    const relatedProducts = allProducts
+      .filter(p => p.id !== productId)
+      .map(p => {
+        let score = 0;
+        if (p.category === product.category) score += 10;
+        const nameWords = (p.name || '').toLowerCase().split(/\s+/);
+        const productNameWords = (product.name || '').toLowerCase().split(/\s+/);
+        const commonWords = nameWords.filter(w => productNameWords.includes(w)).length;
+        score += commonWords * 2;
+        return { ...p, score };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 4);
+
+    recommendationsEl.innerHTML = relatedProducts
+      .map(p => `
+        <div class="recommendation-card" data-id="${p.id}">
+          <img src="${p.image_url || 'https://placehold.co/400x500/1a1a2e/eaeaea?text=Producto'}" alt="${escapeHtml(p.name)}">
+          <div class="info">
+            <h4>${escapeHtml(p.name)}</h4>
+            <span class="price">${parseFloat(p.price).toFixed(2)} CUP</span>
+          </div>
+        </div>
+      `).join('');
+
+    recommendationsEl.addEventListener('click', (e) => {
+      const card = e.target.closest('.recommendation-card');
+      if (card) openProductModal(card.dataset.id);
+    });
   }
 
   function renderStars(avg) {
@@ -520,25 +618,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   // Update buttons when cart changes
-  window.addEventListener('cartUpdated', () => {
-    // Update grid buttons
-    document.querySelectorAll('.btn-add-cart').forEach(btn => {
-      const productId = btn.dataset.id;
-      const inCart = Cart.get().some(item => item.id === productId);
-      btn.className = `btn ${inCart ? 'btn-outline' : 'btn-primary'} btn-add-cart`;
-      if (btn.style.width) btn.style.width = '100%'; // for grid
-      btn.disabled = inCart;
-      btn.textContent = inCart ? 'En el carrito' : 'Añadir al carrito';
-    });
-    // Update modal button if open
-    const modalBtn = document.getElementById('modal-add-cart');
-    if (modalBtn && modalBtn.dataset.id) {
-      const inCart = Cart.get().some(item => item.id === modalBtn.dataset.id);
-      modalBtn.className = `btn ${inCart ? 'btn-outline' : 'btn-primary'} btn-block`;
-      modalBtn.disabled = inCart;
-      modalBtn.textContent = inCart ? 'En el carrito' : 'Añadir al carrito';
-    }
-  });
+  window.addEventListener('cartUpdated', updateCartButtons);
 
   const suggestionsEl = document.getElementById('search-suggestions');
 
