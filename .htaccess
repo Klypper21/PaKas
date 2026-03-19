@@ -100,21 +100,15 @@
     Deny from all
 </FilesMatch>
 
-# Bloquear directorios
-<DirectoryMatch "^(.*/)?\.git">
-    Order allow,deny
-    Deny from all
-</DirectoryMatch>
+
+# Evitar que la gente vea la lista de tus archivos si no hay un index.html
+Options -Indexes
 
 # ============================================
 # RATE LIMITING
 # ============================================
 
-<IfModule mod_ratelimit.c>
-    <Location /api/auth/login>
-        SetEnvIf Request_URI "/api/auth/login" RATE_LIMIT=10
-    </Location>
-</IfModule>
+
 
 # ============================================
 # CHARSET
