@@ -133,37 +133,86 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     if (!window.supabase) return { removedCount: 0, cappedCount: 0, stockMap: lastStockMap };
 
-    const ids = Array.from(new Set(cart.map((i) => i.id).filter(Boolean)));
-    if (!ids.length) return { removedCount: 0, cappedCount: 0, stockMap: lastStockMap };
-
-    const { data, error } = await supabase
-      .from('products')
-      .select('id,name,stock')
-      .in('id', ids);
-
-    if (error) {
-      console.error(error);
-      return { removedCount: 0, cappedCount: 0, stockMap: lastStockMap };
-    }
-
-    const map = new Map((data || []).map((p) => [String(p.id), p]));
+    // Separar items con SKU (variaciones) de items sin SKU (productos regulares)
+    const itemsWithSku = cart.filter(i => i.sku);
+    const itemsWithoutSku = cart.filter(i => !i.sku);
+    
     const keep = [];
     const removed = [];
     const capped = [];
 
-    for (const item of cart) {
-      const p = map.get(String(item.id));
-      const stock = Number(p?.stock ?? 0);
-      if (!p || stock <= 0) {
-        removed.push(item);
-        continue;
-      }
-      const qty = Number(item.quantity) || 0;
-      if (qty > stock) {
-        capped.push({ ...item, prevQty: qty, newQty: stock, stock, name: p?.name || item?.name });
-        keep.push({ ...item, quantity: stock });
-      } else {
+    // Procesar items con SKU (variaciones)
+    for (const item of itemsWithSku) {
+      try {
+        const { data: variation, error } = await supabase
+          .from('product_variations')
+          .select('stock, price')
+          .eq('sku', item.sku)
+          .single();
+        
+        if (error || !variation) {
+          removed.push(item);
+          continue;
+        }
+
+        const stock = Number(variation.stock ?? 0);
+        const price = Number(variation.price ?? item.price);
+        
+        if (stock <= 0) {
+          removed.push(item);
+          continue;
+        }
+
+        const qty = Number(item.quantity) || 0;
+        if (qty > stock) {
+          capped.push({ 
+            ...item, 
+            prevQty: qty, 
+            newQty: stock, 
+            stock, 
+            name: item?.name || 'Variación'
+          });
+          keep.push({ ...item, quantity: stock, price });
+        } else {
+          keep.push({ ...item, price });
+        }
+      } catch (e) {
+        console.error('Error checking variation stock:', e);
         keep.push(item);
+      }
+    }
+
+    // Procesar items sin SKU (productos regulares)
+    if (itemsWithoutSku.length) {
+      const ids = Array.from(new Set(itemsWithoutSku.map((i) => i.id).filter(Boolean)));
+      
+      if (ids.length) {
+        const { data, error } = await supabase
+          .from('products')
+          .select('id,name,stock')
+          .in('id', ids);
+
+        if (!error && data) {
+          const map = new Map((data || []).map((p) => [String(p.id), p]));
+          
+          for (const item of itemsWithoutSku) {
+            const p = map.get(String(item.id));
+            const stock = Number(p?.stock ?? 0);
+            
+            if (!p || stock <= 0) {
+              removed.push(item);
+              continue;
+            }
+            
+            const qty = Number(item.quantity) || 0;
+            if (qty > stock) {
+              capped.push({ ...item, prevQty: qty, newQty: stock, stock, name: p?.name || item?.name });
+              keep.push({ ...item, quantity: stock });
+            } else {
+              keep.push(item);
+            }
+          }
+        }
       }
     }
 
@@ -187,19 +236,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       const suffix = capped.length > names.length ? ` y ${capped.length - names.length} más` : '';
       const label = names.length ? `: ${names.join(', ')}${suffix}` : '';
       notify(`Se ajustaron cantidades al stock disponible${label}.`, 'warning');
-      // ya quedó guardado con localStorage si hubo removed; si no, aseguramos set
       if (!removed.length) {
         localStorage.setItem('cart', JSON.stringify(keep));
         Cart._saveToDB(keep).catch(e => console.error('Error saving to DB:', e));
       }
     }
 
-    lastStockMap = new Map(
-      (data || []).map((p) => [
-        String(p.id),
-        { stock: Number(p.stock ?? 0), name: (p.name || '').trim() || null },
-      ])
-    );
+    lastStockMap = new Map(keep.map((i) => [
+      i.sku || String(i.id),
+      { stock: Number(i.variationStock ?? i.stock ?? 0), name: (i.name || '').trim() || null },
+    ]));
 
     return { removedCount: removed.length, cappedCount: capped.length, stockMap: lastStockMap };
   }
@@ -253,14 +299,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     cartItems.innerHTML = cart
       .map((item) => {
+        // Usar el precio de la variación si existe, sino el del producto
         const unit = parseFloat(item.price) || 0;
         const qty = Number(item.quantity) || 0;
-        const meta = lastStockMap.get(String(item.id));
+        const meta = lastStockMap.get(item.sku || String(item.id));
         const maxStock = Number(meta?.stock);
         const stockLabel = Number.isFinite(maxStock) ? `Stock: ${maxStock}` : '';
         const img = item.image_url || 'https://placehold.co/80x100/1a1a2e/eaeaea?text=Img';
         return `
-          <div class="order-product cart-product" data-product-id="${item.id}">
+          <div class="order-product cart-product" data-product-id="${item.id}" data-sku="${item.sku || ''}">
             <img src="${img}" alt="">
             <div class="details">
               <h3>${item.name}</h3>
@@ -271,11 +318,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             <div class="cart-product__right">
               <p>${(unit * qty).toFixed(2)} CUP</p>
               <div class="qty-controls" aria-label="Cantidad">
-                <button type="button" class="qty-btn qty-btn--minus" data-qty-action="minus" data-product-id="${item.id}" aria-label="Disminuir cantidad">−</button>
+                <button type="button" class="qty-btn qty-btn--minus" data-qty-action="minus" data-product-id="${item.id}" data-sku="${item.sku || ''}" aria-label="Disminuir cantidad">−</button>
                 <span class="qty-value" aria-label="Cantidad actual">${qty}</span>
-                <button type="button" class="qty-btn qty-btn--plus" data-qty-action="plus" data-product-id="${item.id}" aria-label="Aumentar cantidad">+</button>
+                <button type="button" class="qty-btn qty-btn--plus" data-qty-action="plus" data-product-id="${item.id}" data-sku="${item.sku || ''}" aria-label="Aumentar cantidad">+</button>
               </div>
-              <button class="remove" type="button" data-remove-id="${item.id}">Eliminar</button>
+              <button class="remove" type="button" data-remove-id="${item.id}" data-sku="${item.sku || ''}">Eliminar</button>
             </div>
           </div>
         `;
@@ -287,17 +334,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     const qtyBtn = e.target.closest('button.qty-btn');
     if (qtyBtn) {
       const id = qtyBtn.dataset.productId;
+      const sku = qtyBtn.dataset.sku || null;
       const action = qtyBtn.dataset.qtyAction;
       if (!id || !action) return;
       const cart = Cart.get();
-      const item = cart.find((i) => String(i.id) === String(id));
+      const item = sku 
+        ? cart.find((i) => String(i.id) === String(id) && i.sku === sku)
+        : cart.find((i) => String(i.id) === String(id));
       const current = Number(item?.quantity) || 0;
-      const maxStock = Number(lastStockMap.get(String(id))?.stock);
+      const maxStock = Number(lastStockMap.get(sku || String(id))?.stock);
 
       if (action === 'minus') {
         const next = current - 1;
         // Renderizar instantáneamente (actualización optimista)
-        Cart.setQuantityWithStock(id, next, { notify });
+        Cart.setQuantityWithStock(id, next, { notify, sku });
         renderCart();
         return;
       }
@@ -307,7 +357,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           return;
         }
         // Renderizar instantáneamente (actualización optimista)
-        Cart.setQuantityWithStock(id, current + 1, { notify });
+        Cart.setQuantityWithStock(id, current + 1, { notify, sku });
         renderCart();
         return;
       }
@@ -316,8 +366,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const rm = e.target.closest('button.remove');
     if (rm) {
       const id = rm.dataset.removeId;
+      const sku = rm.dataset.sku || null;
       if (!id) return;
-      Cart.remove(id);
+      Cart.remove(id, sku);
       renderCart();
       notify('Producto eliminado del carrito', 'info');
       return;
@@ -571,6 +622,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (itemsErr) {
       notify('Error al guardar items: ' + itemsErr.message, 'error');
       return;
+    }
+
+    // Decrementar stock de variaciones específicas (si existen)
+    for (const cartItem of cart) {
+      if (cartItem.sku && cartItem.options?.color && cartItem.options?.talla) {
+        // Items con variación: actualizar stock en product_variations
+        try {
+          // Obtener el stock actual de la variación
+          const { data: currentVar, error: fetchErr } = await supabase
+            .from('product_variations')
+            .select('stock')
+            .eq('parent_product_id', cartItem.id)
+            .eq('color', cartItem.options.color)
+            .eq('talla', cartItem.options.talla)
+            .single();
+
+          if (!fetchErr && currentVar) {
+            const newStock = Math.max(0, (currentVar.stock || 0) - cartItem.quantity);
+            await supabase
+              .from('product_variations')
+              .update({ stock: newStock })
+              .eq('parent_product_id', cartItem.id)
+              .eq('color', cartItem.options.color)
+              .eq('talla', cartItem.options.talla);
+          }
+        } catch (e) {
+          console.error('Error updating variation stock:', e);
+        }
+      }
     }
 
     // En este punto el stock ya se había descontado al pulsar "Realizar pedido" (reserva).

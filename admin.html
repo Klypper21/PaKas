@@ -32,6 +32,7 @@
     <div class="admin-tabs">
       <button type="button" class="admin-tab active" data-tab="compras">Compras</button>
       <button type="button" class="admin-tab" data-tab="productos">Productos</button>
+      <button type="button" class="admin-tab" data-tab="variaciones">Variaciones</button>
     </div>
 
     <section id="section-compras" class="admin-section">
@@ -48,6 +49,22 @@
       <div id="admin-products" class="admin-products-grid"></div>
       <div id="admin-products-empty" class="admin-empty hidden">
         <p>No hay productos. Añade el primero.</p>
+      </div>
+    </section>
+
+    <section id="section-variaciones" class="admin-section hidden">
+      <p class="admin-desc">Gestiona las variaciones de productos (colores, tallas, precios y stock independientes).</p>
+      <div class="variations-filter">
+        <select id="variations-product-select" class="variations-product-select">
+          <option value="">Selecciona un producto...</option>
+        </select>
+      </div>
+      <div id="variations-content" class="variations-content" style="display: none;">
+        <button type="button" id="btn-new-variation" class="btn btn-primary">Nueva variación</button>
+        <div id="variations-list" class="variations-list"></div>
+        <div id="variations-empty" class="admin-empty hidden">
+          <p>No hay variaciones para este producto. Añade la primera.</p>
+        </div>
       </div>
     </section>
   </main>
@@ -81,13 +98,33 @@
         <input type="hidden" id="product-extra-images-existing" value="[]">
         <label for="product-name">Nombre</label>
         <input type="text" id="product-name" required placeholder="Nombre del producto">
-        <label for="product-talla">Talla</label>
-        <input type="text" id="product-talla" placeholder="Ej. S, M, L, XL">
         
-        <label for="product-colores">Colores</label>
-        <div id="color-picker-container"></div>
-        <input type="hidden" id="product-colores-data" value="">
-        <input type="text" id="product-colores" placeholder="Ej. Rojo, Azul, Negro" style="display:none;">
+        <!-- Sección de Colores y Tallas -->
+        <div class="product-variations-section">
+          <h3>Colores y Tallas</h3>
+          
+          <div class="product-colors-section">
+            <label>Colores disponibles</label>
+            <div id="admin-colors-palette" class="admin-colors-palette"></div>
+            <div id="product-colors-list" class="product-items-list"></div>
+          </div>
+          
+          <div class="product-tallas-section">
+            <label>Tallas disponibles</label>
+            <div class="product-tallas-input">
+              <input type="text" id="product-new-talla" placeholder="Ej. S, M, L, XL" class="product-talla-input">
+              <button type="button" class="btn btn-primary btn-sm" id="btn-add-talla">Agregar talla</button>
+            </div>
+            <div id="product-tallas-list" class="product-items-list"></div>
+          </div>
+        </div>
+        
+        <!-- Matriz de Stock/Precio por Combinación -->
+        <div id="product-variations-matrix-section" class="product-variations-matrix-section" style="display: none;">
+          <label>Stock y Precio por Variación</label>
+          <div id="product-variations-matrix" class="product-variations-matrix"></div>
+          <input type="hidden" id="product-variations-data" value="[]">
+        </div>
         
         <label for="product-material">Material</label>
         <input type="text" id="product-material" placeholder="Ej. Algodón 100%">
@@ -97,10 +134,6 @@
         <textarea id="product-description" rows="3" placeholder="Descripción general del producto"></textarea>
         <label for="product-category">Categoría</label>
         <input type="text" id="product-category" placeholder="Ej. Camisetas">
-        <label for="product-price">Precio (CUP)</label>
-        <input type="number" id="product-price" step="0.01" min="0" required placeholder="0.00">
-        <label for="product-stock">Stock</label>
-        <input type="number" id="product-stock" min="0" value="0" placeholder="0">
         <label for="product-image">URL imagen (opcional, si no subes archivo)</label>
         <input type="url" id="product-image" placeholder="https://...">
 
@@ -116,11 +149,72 @@
     </div>
   </div>
 
+  <!-- Modal para subir imagen de variación -->
+  <div id="variation-image-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content" style="max-width: 500px;">
+      <button type="button" class="modal-close" aria-label="Cerrar">&times;</button>
+      <h2>Cargar imagen de variación</h2>
+      
+      <div id="variation-image-preview" class="variation-image-preview">
+        <p>Se abrirá un selector de archivos automáticamente</p>
+        <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.5rem;">Si no se abre, haz click en el botón de abajo</p>
+      </div>
+      
+      <div style="text-align: center; margin: 1.5rem 0;">
+        <button type="button" id="btn-select-variation-image" class="btn btn-primary" style="margin-bottom: 1rem; width: 100%;">
+          📁 Seleccionar imagen
+        </button>
+        <input type="file" id="variation-image-input" accept="image/*" style="display: none;">
+      </div>
+      
+      <div class="modal-actions">
+        <button type="button" id="btn-variation-image-confirm" class="btn btn-primary">Guardar imagen</button>
+        <button type="button" id="btn-variation-image-cancel" class="btn btn-outline">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal variación (nuevo / editar) -->
+  <div id="variation-form-modal" class="modal hidden">
+    <div class="modal-backdrop variation-form-backdrop"></div>
+    <div class="modal-content variation-form-content">
+      <button type="button" class="variation-form-close" aria-label="Cerrar">&times;</button>
+      <h2 id="variation-form-title">Nueva variación</h2>
+      <form id="variation-form" class="auth-form variation-form">
+        <input type="hidden" id="variation-form-id" value="">
+        <input type="hidden" id="variation-parent-product-id" value="">
+        
+        <label for="variation-sku">SKU</label>
+        <input type="text" id="variation-sku" required placeholder="Ej. TSHIRT-RED-M">
+        
+        <label for="variation-color">Color</label>
+        <input type="text" id="variation-color" required placeholder="Ej. Rojo">
+        
+        <label for="variation-talla">Talla</label>
+        <input type="text" id="variation-talla" required placeholder="Ej. M, L, XL">
+        
+        <label for="variation-price">Precio (CUP)</label>
+        <input type="number" id="variation-price" step="0.01" min="0" required placeholder="0.00">
+        
+        <label for="variation-stock">Stock</label>
+        <input type="number" id="variation-stock" min="0" value="0" required placeholder="0">
+        
+        <label for="variation-image">URL imagen (opcional)</label>
+        <input type="url" id="variation-image" placeholder="https://...">
+
+        <button type="submit" class="btn btn-primary btn-block">Guardar variación</button>
+      </form>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="js/config.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/app.js"></script>
   <script src="js/color-palette.js"></script>
+  <script src="js/product-variations-builder.js"></script>
   <script src="js/admin.js"></script>
+  <script src="js/admin-variations.js"></script>
 </body>
 </html>

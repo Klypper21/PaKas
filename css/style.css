@@ -1874,6 +1874,7 @@ body {
 }
 
 #product-form-modal .product-form-backdrop {
+  display: none;
   position: absolute;
   inset: 0;
   background: rgba(0, 0, 0, 0.6);
@@ -1896,8 +1897,6 @@ body {
 .modal {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(8px);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -1926,6 +1925,9 @@ body {
   max-height: calc(100vh - 4rem);
   overflow-y: auto;
   animation: fadeUp 0.4s ease;
+  position: relative;
+  z-index: 1100;
+  pointer-events: auto;
 }
 
 .modal-content h2 {
@@ -3301,6 +3303,12 @@ body {
   box-shadow: inset 0 0 0 2px var(--accent);
 }
 
+.modal-color-option.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .modal-color-circle {
   width: 40px;
   height: 40px;
@@ -3327,5 +3335,244 @@ body {
     width: 28px;
     height: 28px;
     border-width: 2px;
+  }
+}
+
+/* =====================================================
+   VARIATION SELECTOR STYLES (Parent-Child Products)
+   ===================================================== */
+
+.variation-selector-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+  margin: 1.5rem 0;
+}
+
+.variation-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.variation-field label {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.variation-field select,
+.product-options select {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background-color: var(--bg-card);
+  color: var(--text);
+  font-size: 0.95rem;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all var(--transition);
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23362112' d='M10.293 3.293L6 7.586 1.707 3.293A1 1 0 00.293 4.707l5 5a1 1 0 001.414 0l5-5a1 1 0 10-1.414-1.414z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  padding-right: 2.5rem;
+}
+
+.variation-field select:hover,
+.product-options select:hover {
+  border-color: var(--accent);
+  background-color: var(--bg-hover);
+}
+
+.variation-field select:focus,
+.product-options select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.variation-field select option,
+.product-options select option {
+  padding: 0.5rem;
+  background-color: var(--bg-card);
+  color: var(--text);
+}
+
+.variation-field select option:disabled,
+.product-options select option:disabled {
+  background-color: var(--bg-hover);
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.variation-field select option.out-of-stock,
+.product-options select option.out-of-stock {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+/* Color palette visual selector */
+.variation-color-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.variation-colors-palette {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.variation-color-option {
+  width: 45px;
+  height: 45px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all var(--transition);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  position: relative;
+}
+
+.variation-color-option:hover {
+  transform: scale(1.08);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.variation-color-option.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(26, 26, 30, 0.2), inset 0 0 0 2px var(--accent);
+}
+
+.variation-color-option:disabled,
+.variation-color-option[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: linear-gradient(135deg, rgba(0, 0, 0, 0.1) 25%, transparent 25%),
+              linear-gradient(225deg, rgba(0, 0, 0, 0.1) 25%, transparent 25%),
+              linear-gradient(45deg, rgba(0, 0, 0, 0.1) 25%, transparent 25%),
+              linear-gradient(315deg, rgba(0, 0, 0, 0.1) 25%, transparent 25%);
+  background-size: 4px 4px;
+  background-position: 0 0, 2px 0, 2px -2px, 0 -2px;
+}
+
+/* Modal color options (in product modal) */
+.modal-colors-palette {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
+.modal-color-option {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all var(--transition);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text);
+  position: relative;
+}
+
+.modal-color-option:hover {
+  transform: scale(1.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.modal-color-option.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(26, 26, 30, 0.2), inset 0 0 0 2px var(--accent);
+}
+
+.modal-color-circle {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  border: 2px solid rgba(0, 0, 0, 0.1);
+}
+
+/* Stock information */
+.variation-stock-info {
+  font-size: 0.9rem;
+  padding: 0.75rem 1rem;
+  border-radius: 4px;
+  background-color: var(--success-soft);
+  color: var(--success);
+  margin: 1rem 0;
+  display: none;
+}
+
+.variation-stock-info.visible {
+  display: block;
+}
+
+.variation-stock-info.out-of-stock {
+  background-color: rgba(192, 57, 43, 0.1);
+  color: var(--error);
+}
+
+/* Option group styling (for product modal) */
+.option-group {
+  margin-bottom: 1.5rem;
+}
+
+.option-group label {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 0.5rem;
+}
+
+/* Button state when variation is selected */
+.btn-add-cart:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: var(--text-muted);
+  border-color: var(--text-muted);
+}
+
+.btn-add-cart:disabled:hover {
+  background-color: var(--text-muted);
+  border-color: var(--text-muted);
+  transform: none;
+}
+
+/* Responsive variations */
+@media (max-width: 768px) {
+  .variation-selector-group {
+    gap: 1rem;
+  }
+
+  .variation-colors-palette {
+    gap: 0.4rem;
+  }
+
+  .variation-color-option {
+    width: 40px;
+    height: 40px;
+  }
+
+  .modal-colors-palette {
+    gap: 0.5rem;
+  }
+
+  .modal-color-option {
+    width: 45px;
+    height: 45px;
   }
 }

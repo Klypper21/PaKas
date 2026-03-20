@@ -710,10 +710,22 @@ const Cart = {
     window.dispatchEvent(new CustomEvent('cartUpdated'));
   },
 
-  async getStock(productId) {
+  async getStock(productId, sku = null) {
     if (!window.supabase) return null;
     if (!productId) return null;
     try {
+      // Si hay SKU, buscar en product_variations
+      if (sku) {
+        const { data, error } = await supabase
+          .from('product_variations')
+          .select('stock')
+          .eq('sku', sku)
+          .single();
+        if (error) return null;
+        return Number(data?.stock ?? 0);
+      }
+      
+      // Si no hay SKU, buscar en products
       const { data, error } = await supabase
         .from('products')
         .select('stock')
@@ -727,6 +739,132 @@ const Cart = {
     }
   },
 
+  // Obtiene información de una variación por color + talla
+  async getVariation(productId, color, talla) {
+    if (!window.supabase) return null;
+    if (!productId || !color || !talla) return null;
+    
+    // Validar que no sean undefined, null o empty
+    if (typeof color !== 'string' || color.trim() === '') return null;
+    if (typeof talla !== 'string' || talla.trim() === '') return null;
+    
+    try {
+      const colorTrimmed = color.trim();
+      const tallaTrimmed = talla.trim();
+      
+      const { data, error } = await supabase
+        .from('product_variations')
+        .select('*')
+        .eq('parent_product_id', productId)
+        .eq('color', colorTrimmed)
+        .eq('talla', tallaTrimmed)
+        .limit(1);
+      
+      // Sin .single(), devuelve array. Validar error y array vacío
+      if (error) {
+        console.error('Error fetching variation:', error);
+        return null;
+      }
+      
+      // Si no hay resultados, devolver null (permite fallback al precio del producto)
+      if (!data || data.length === 0) {
+        return null;
+      }
+      
+      return data[0];
+    } catch (e) {
+      console.error('Exception getting variation:', e);
+      return null;
+    }
+  },
+
+  async getAvailableTallasForColor(productId, color) {
+    if (!window.supabase) return [];
+    if (!productId || !color) return [];
+    
+    if (typeof color !== 'string' || color.trim() === '') return [];
+    
+    try {
+      const { data, error } = await supabase
+        .from('product_variations')
+        .select('talla')
+        .eq('parent_product_id', productId)
+        .eq('color', color.trim())
+        .gt('stock', 0);
+      
+      if (error) {
+        console.error('Error fetching tallas for color:', error);
+        return [];
+      }
+      
+      // Extraer tallas únicas
+      const tallas = data ? [...new Set(data.map(v => v.talla).filter(Boolean))] : [];
+      return tallas;
+    } catch (e) {
+      console.error('Exception getting tallas:', e);
+      return [];
+    }
+  },
+
+  async getAvailableColoresForTalla(productId, talla) {
+    if (!window.supabase) return [];
+    if (!productId || !talla) return [];
+    
+    if (typeof talla !== 'string' || talla.trim() === '') return [];
+    
+    try {
+      const { data, error } = await supabase
+        .from('product_variations')
+        .select('color')
+        .eq('parent_product_id', productId)
+        .eq('talla', talla.trim())
+        .gt('stock', 0);
+      
+      if (error) {
+        console.error('Error fetching colors for talla:', error);
+        return [];
+      }
+      
+      // Extraer colores únicos
+      const colores = data ? [...new Set(data.map(v => v.color).filter(Boolean))] : [];
+      return colores;
+    } catch (e) {
+      console.error('Exception getting colores:', e);
+      return [];
+    }
+  },
+
+  async getOutOfStockVariations(productId) {
+    if (!window.supabase) return { colors: [], tallas: [] };
+    if (!productId) return { colors: [], tallas: [] };
+    
+    try {
+      const { data, error } = await supabase
+        .from('product_variations')
+        .select('color, talla')
+        .eq('parent_product_id', productId)
+        .eq('stock', 0);
+      
+      if (error) {
+        console.error('Error fetching out of stock variations:', error);
+        return { colors: [], tallas: [] };
+      }
+      
+      if (!data || data.length === 0) {
+        return { colors: [], tallas: [] };
+      }
+      
+      // Extraer colores y tallas únicos sin stock
+      const colors = [...new Set(data.map(v => v.color).filter(Boolean))];
+      const tallas = [...new Set(data.map(v => v.talla).filter(Boolean))];
+      
+      return { colors, tallas };
+    } catch (e) {
+      console.error('Exception getting out of stock variations:', e);
+      return { colors: [], tallas: [] };
+    }
+  },
+
   async addWithStock(product, quantity = 1, opts = {}) {
     const requested = Math.max(0, Number(quantity) || 0);
     if (!requested) return { ok: false, reason: 'invalid_quantity', added: 0 };
@@ -736,7 +874,13 @@ const Cart = {
     
     // Actualización optimista: agregar al carrito inmediatamente
     const cart = this.get();
-    const idx = cart.findIndex((i) => i.id === product.id);
+    // Buscar por ID + SKU si existe (para variaciones)
+    const cartKey = product.sku ? `${product.id}::${product.sku}` : product.id;
+    const idx = cart.findIndex((i) => {
+      const key = i.sku ? `${i.id}::${i.sku}` : i.id;
+      return key === cartKey;
+    });
+    
     const currentQty = idx >= 0 ? Number(cart[idx].quantity) || 0 : 0;
     const desired = currentQty + requested;
 
@@ -757,25 +901,29 @@ const Cart = {
 
     const added = optimisticQty - currentQty;
 
-    // Validar stock en segundo plano
-    this._validateAndAdjustAddedItem(product.id, optimisticQty, currentQty, notify);
+    // Validar stock en segundo plano (pasando SKU si existe)
+    this._validateAndAdjustAddedItem(product.id, optimisticQty, currentQty, notify, product.sku);
 
     return { ok: true, reason: 'added', added };
   },
 
   // Valida el stock del producto que se agregó
-  async _validateAndAdjustAddedItem(productId, optimisticQty, previousQty, notify) {
+  async _validateAndAdjustAddedItem(productId, optimisticQty, previousQty, notify, sku = null) {
     try {
-      const stock = await this.getStock(productId);
+      const stock = await this.getStock(productId, sku);
       if (typeof stock !== 'number') return;
 
       const cart = this.get();
-      const idx = cart.findIndex((i) => i.id === productId);
+      const cartKey = sku ? `${productId}::${sku}` : productId;
+      const idx = cart.findIndex((i) => {
+        const key = i.sku ? `${i.id}::${i.sku}` : i.id;
+        return key === cartKey;
+      });
       if (idx < 0) return;
 
       if (stock <= 0) {
         // Producto agotado, remover
-        const next = cart.filter((i) => i.id !== productId);
+        const next = cart.filter((i, i_idx) => i_idx !== idx);
         localStorage.setItem('cart', JSON.stringify(next));
         await this._saveToDB(next);
         updateCartCount?.();
@@ -805,15 +953,21 @@ const Cart = {
 
   async setQuantityWithStock(productId, quantity, opts = {}) {
     const notify = typeof opts.notify === 'function' ? opts.notify : null;
+    const sku = opts.sku || null;
     const q = Math.max(0, Math.floor(Number(quantity) || 0));
     const cart = this.get();
-    const idx = cart.findIndex((i) => i.id === productId);
+    const cartKey = sku ? `${productId}::${sku}` : productId;
+    const idx = cart.findIndex((i) => {
+      const key = i.sku ? `${i.id}::${i.sku}` : i.id;
+      return key === cartKey;
+    });
+    
     if (idx < 0) return { ok: false, reason: 'not_found' };
 
     // Actualización optimista: cambiar cantidad inmediatamente
     const originalQty = cart[idx].quantity;
     if (q <= 0) {
-      const next = cart.filter((i) => i.id !== productId);
+      const next = cart.filter((i, i_idx) => i_idx !== idx);
       localStorage.setItem('cart', JSON.stringify(next));
       updateCartCount?.();
       // Guardar en BD de forma asincrónica sin esperar
@@ -829,24 +983,28 @@ const Cart = {
     this._saveToDB(cart).catch(e => console.error('Error saving to DB:', e));
 
     // Validar stock en segundo plano y ajustar si es necesario
-    this._validateAndAdjustQuantity(productId, q, originalQty, notify);
+    this._validateAndAdjustQuantity(productId, q, originalQty, notify, sku);
 
     return { ok: true, reason: 'set' };
   },
 
   // Valida y ajusta cantidad en segundo plano
-  async _validateAndAdjustQuantity(productId, requestedQty, originalQty, notify) {
+  async _validateAndAdjustQuantity(productId, requestedQty, originalQty, notify, sku = null) {
     try {
-      const stock = await this.getStock(productId);
+      const stock = await this.getStock(productId, sku);
       if (typeof stock !== 'number') return;
 
       const cart = this.get();
-      const idx = cart.findIndex((i) => i.id === productId);
+      const cartKey = sku ? `${productId}::${sku}` : productId;
+      const idx = cart.findIndex((i) => {
+        const key = i.sku ? `${i.id}::${i.sku}` : i.id;
+        return key === cartKey;
+      });
       if (idx < 0) return;
 
       if (stock <= 0) {
         // Producto agotado, remover
-        const next = cart.filter((i) => i.id !== productId);
+        const next = cart.filter((i, i_idx) => i_idx !== idx);
         localStorage.setItem('cart', JSON.stringify(next));
         await this._saveToDB(next);
         updateCartCount?.();
@@ -872,11 +1030,16 @@ const Cart = {
     }
   },
 
-  remove(productId) {
-    const cart = this.get().filter(i => i.id !== productId);
-    localStorage.setItem('cart', JSON.stringify(cart));
+  remove(productId, sku = null) {
+    const cart = this.get();
+    const cartKey = sku ? `${productId}::${sku}` : productId;
+    const next = cart.filter(i => {
+      const key = i.sku ? `${i.id}::${i.sku}` : i.id;
+      return key !== cartKey;
+    });
+    localStorage.setItem('cart', JSON.stringify(next));
     updateCartCount?.();
-    this._saveToDB(cart).catch(e => console.error('Error saving to DB:', e));
+    this._saveToDB(next).catch(e => console.error('Error saving to DB:', e));
     window.dispatchEvent(new CustomEvent('cartUpdated'));
   },
 

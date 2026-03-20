@@ -1,0 +1,251 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║          ✅ CARRITO ACTUALIZADO - VALIDACIÓN POR VARIACIONES               ║
+║                     Stock y Precios por Color+Talla                         ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+┌─ QUÉ CAMBIÓ ──────────────────────────────────────────────────────────────┐
+│                                                                             │
+│ ANTES: Carrito validaba stock TOTAL del producto                          │
+│ ─────                                                                      │
+│ Producto: Camiseta                                                         │
+│ - Price en carrito: 26.25 (promedio de todas las variaciones)              │
+│ - Stock validado: 113 (suma de todas las variaciones)                      │
+│ - Problema: No diferenciaba entre color Rojo, Azul, Negro                │
+│           → Podía vender 113 unidades de Rojo si ese era el único stock    │
+│                                                                             │
+│ AHORA: Carrito valida stock DE CADA VARIACIÓN ESPECÍFICAMENTE             │
+│ ──────                                                                     │
+│ Producto: Camiseta                                                         │
+│ Seleccionas: Rojo + S                                                      │
+│ - Price en carrito: 25.00 (precio específico de Rojo S)                    │
+│ - Stock mostrado: 5 (stock disponible solo para Rojo S)                    │
+│ - Stock validado: valida contra "CAMI-RED-S" en product_variations         │
+│ - Resultado: No puede vender más de 5 unidades de esa variación           │
+│                                                                             │
+│ ✅ VENTAJAS:                                                               │
+│    • Precios correctos por variación                                       │
+│    • Stock no se mezcla entre colores/tallas                               │
+│    • Cambios en admin se reflejan automáticamente                          │
+│    • Backward compatible con productos sin variaciones                     │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─ FLUJO DE DATOS ──────────────────────────────────────────────────────────┐
+│                                                                             │
+│ EN TIENDA (tienda.html)                                                    │
+│ ═════════════════════════════════════════════════════════════════════      │
+│                                                                             │
+│ 1. Usuario abre modal de producto                                          │
+│    ↓                                                                        │
+│ 2. Usuario selecciona Color: "Rojo"                                        │
+│    ↓ updateVariationPriceAndStock() ejecuta                               │
+│ 3. Modal busca en product_variations:                                      │
+│    SELECT * FROM product_variations                                        │
+│    WHERE parent_product_id = 'product_uuid'                                │
+│      AND color = 'Rojo'                                                    │
+│      AND talla = 'S'  ← se actualizará cuando seleccione talla             │
+│    ↓                                                                        │
+│ 4. Obtiene: sku="CAMI-RED-S", price=25.00, stock=10                       │
+│    ↓                                                                        │
+│ 5. Modal actualiza en TIEMPO REAL:                                         │
+│    - Precio: 25.00 CUP (en lugar de 26.25)                                 │
+│    - Stock: 10 en stock (en lugar de 113)                                  │
+│    - Botón: habilitado si stock > 0                                        │
+│                                                                             │
+│ 6. Usuario hace click "Agregar al carrito"                                 │
+│    ↓ tienda.js busca nuevamente la variation                              │
+│ 7. Agrega al carrito CON SKU:                                              │
+│    {                                                                        │
+│      id: "product_uuid",                                                   │
+│      name: "Camiseta",                                                     │
+│      price: 25.00,         ← CORRECTO (de la variación)                    │
+│      sku: "CAMI-RED-S",    ← NUEVO (SKU de la variación)                   │
+│      options: {color: "Rojo", talla: "S"},                                 │
+│      quantity: 1                                                           │
+│    }                                                                        │
+│                                                                             │
+│ EN CARRITO (carrito.html)                                                  │
+│ ════════════════════════════════════════════════════════════════════       │
+│                                                                             │
+│ 1. Página carga                                                            │
+│    ↓                                                                        │
+│ 2. syncCartWithStock() ejecuta para CADA item:                             │
+│    ↓                                                                        │
+│    Si item tiene SKU:                                                       │
+│    ┌─────────────────────────────────────────────────────────┐             │
+│    │ SELECT stock, price FROM product_variations             │             │
+│    │ WHERE sku = 'CAMI-RED-S'                                │             │
+│    │                                                         │             │
+│    │ Resultado: stock=10, price=25.00                        │             │
+│    │                                                         │             │
+│    │ Si qty > stock: ajusta o elimina                        │             │
+│    │ Si precio cambió: actualiza en carrito                  │             │
+│    └─────────────────────────────────────────────────────────┘             │
+│    ↓                                                                        │
+│ 3. Renderiza item en carrito:                                              │
+│    Camiseta                                                                │
+│    Color: Rojo, Talla: S                                                   │
+│    25.00 CUP × 1 = 25.00 CUP           ← Precio correcto                   │
+│    Stock: 10  ← Stock correcto de la variación                             │
+│    ↓                                                                        │
+│ 4. Usuario modifica cantidad (+ o -)                                       │
+│    ↓ Valida nuevamente contra product_variations.sku                      │
+│                                                                             │
+│ EN CHECKOUT (confirmacion.html)                                            │
+│ ═════════════════════════════════════════════════════════════════          │
+│                                                                             │
+│ 1. Usuario confirma orden                                                  │
+│    ↓                                                                        │
+│ 2. Para CADA item en carrito:                                              │
+│    ↓                                                                        │
+│    UPDATE product_variations SET stock = stock - qty                       │
+│    WHERE sku = item.sku                                                    │
+│    ↓                                                                        │
+│ 3. Stock se deduce de la variación específica, no del total                │
+│    Ejemplo:                                                                │
+│    - ANTES: product "Camiseta" stock=113                                   │
+│    - Usuario compra 2 × "CAMI-RED-S"                                       │
+│    - AHORA: product_variations "CAMI-RED-S" stock=8 (fue 10)               │
+│    - NOTA: product "Camiseta" stock sigue siendo 113 (se calcula)           │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─ DIFERENCIACIÓN DE ITEMS EN CARRITO ───────────────────────────────────────┐
+│                                                                             │
+│ CLAVE DE BÚSQUEDA EN CARRITO:                                              │
+│                                                                             │
+│ Producto SIN variación:                                                    │
+│   Clave = "product_id"                                                     │
+│   Ej: "550e8400-e29b-41d4-a716-446655440001"                               │
+│                                                                             │
+│ Producto CON variación (NUEVO):                                            │
+│   Clave = "product_id::sku"                                                │
+│   Ej: "550e8400-e29b-41d4-a716-446655440001::CAMI-RED-S"                   │
+│                                                                             │
+│ → Esto permite tener MÚLTIPLES items del MISMO producto en el carrito      │
+│   pero DIFERENTES variaciones (colores/tallas):                            │
+│                                                                             │
+│   ┌─────────────────────────────────────────────────┐                      │
+│   │ Item 1: Camiseta · Rojo S    × 2 = 50.00 CUP   │                      │
+│   │ Item 2: Camiseta · Azul M    × 1 = 25.00 CUP   │                      │
+│   │ Item 3: Camiseta · Negro L   × 3 = 84.00 CUP   │                      │
+│   │ ─────────────────────────────────────────────── │                      │
+│   │ Total carrito: 159.00 CUP                       │                      │
+│   │                                                  │                      │
+│   │ ✓ 3 items DIFERENTES del mismo producto         │                      │
+│   │ ✓ Cada uno con precio + stock correcto           │                      │
+│   └─────────────────────────────────────────────────┘                      │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─ EJEMPLOS PRÁCTICOS ──────────────────────────────────────────────────────┐
+│                                                                             │
+│ EJEMPLO 1: Precios Diferentes por Variación                               │
+│ ────────────────────────────────────────────                              │
+│ Producto: Jeans                                                            │
+│ - 2 colores: Azul ($49.99), Negro ($59.99 premium)                         │
+│ - 3 tallas cada uno: S, M, L                                               │
+│ - Total variaciones: 6                                                     │
+│                                                                             │
+│ Carrito del usuario:                                                       │
+│ ┌─────────────────────────────────────────────────────┐                    │
+│ │  Jeans Azul S   × 1 × 49.99  =  49.99 CUP          │                    │
+│ │  Jeans Negro L  × 2 × 59.99  = 119.98 CUP          │                    │
+│ ├─────────────────────────────────────────────────────┤                    │
+│ │  SUBTOTAL: 169.97 CUP                              │                    │
+│ │  ENTREGA: 150 CUP                                  │                    │
+│ │  TOTAL: 319.97 CUP                                 │                    │
+│ └─────────────────────────────────────────────────────┘                    │
+│                                                                             │
+│ ✓ Precio Azul S: 49.99 (correcto)                                          │
+│ ✓ Precio Negro L: 59.99 (correcto, NOT promedio)                           │
+│                                                                             │
+│ ───────────────────────────────────────────────────────────────────────    │
+│                                                                             │
+│ EJEMPLO 2: Stock Agotado de UNA Variación                                 │
+│ ─────────────────────────────────────                                      │
+│ Otros 10 clientes compraron todo el stock de "Rojo S"                      │
+│                                                                             │
+│ En TIENDA.html:                                                            │
+│ - Seleccionas Rojo + S → Modal muestra "Agotado"                           │
+│ - Botón "Agregar al carrito" está DESHABILITADO                            │
+│ - Puedes seleccionar otras variaciones (Rojo M, Azul S, etc.)              │
+│                                                                             │
+│ En tu CARRITO (si ya tenías Rojo S):                                       │
+│ - syncCartWithStock() detecta stock = 0 de "CAMI-RED-S"                    │
+│ - Elimina automáticamente el item del carrito                              │
+│ - Muestra toast: "Se eliminó 'Camiseta' del carrito por estar agotado"     │
+│                                                                             │
+│ ✓ Las otras variaciones (Rojo M, Azul S, etc.) siguen en carrito          │
+│ ✓ Solo se elimina la variación agotada                                    │
+│                                                                             │
+│ ───────────────────────────────────────────────────────────────────────    │
+│                                                                             │
+│ EJEMPLO 3: Cambio de Precio en Admin                                      │
+│ ──────────────────────────────────────                                     │
+│ Escenario: Admin cambia precio de "Negro" a 30.00 CUP                      │
+│ (era 28.00 CUP)                                                            │
+│                                                                             │
+│ Tienes en carrito:                                                         │
+│ - Rojo S: 25.00 CUP (no cambió)                                            │
+│ - Negro L: 28.00 CUP (viejo, será actualizado)                             │
+│                                                                             │
+│ Acciones:                                                                  │
+│ → Recarga carrito.html o espera sincronización                             │
+│ → syncCartWithStock() busca en BD y OBTIENE nuevo precio                   │
+│ → Negro L AHORA muestra 30.00 CUP                                          │
+│ → Total carrito se recalcula automáticamente                               │
+│                                                                             │
+│ ✓ Transparencia: usuario ve precio actual, no antiguo                     │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+┌─ COMPATIBILIDAD BACKWARD ─────────────────────────────────────────────────┐
+│                                                                             │
+│ ✅ Productos SIN variaciones siguen funcionando:                           │
+│                                                                             │
+│ Item antiguo (sin SKU):                                                    │
+│ {                                                                          │
+│   id: "producto_uuid",                                                     │
+│   name: "Producto Simple",                                                 │
+│   price: 100.00,                                                           │
+│   quantity: 1                                                              │
+│   // NO tiene sku, NO tiene options                                        │
+│ }                                                                          │
+│                                                                             │
+│ Validación:                                                                │
+│ → Carrito detecta que no hay 'sku'                                         │
+│ → Busca en TABLE 'products' (antiguo comportamiento)                       │
+│ → Valida contra stock total del producto                                   │
+│ → Funciona igual que antes ✓                                               │
+│                                                                             │
+│ ✅ Puedes mezclar productos viejos + variaciones nuevas:                   │
+│                                                                             │
+│ Carrito con MIX:                                                           │
+│ [                                                                          │
+│   { id: "prod1", name: "Producto Antiguo", price: 50, qty: 1 },           │
+│   { id: "prod2", name: "Camiseta", price: 25, sku: "CAMI-RED-S", qty: 2 }, │
+│   { id: "prod3", name: "Otro Antiguo", price: 75, qty: 1 }                │
+│ ]                                                                          │
+│                                                                             │
+│ Validación correcta:                                                       │
+│ - prod1 + prod3: buscan en 'products'                                      │
+│ - prod2: busca en 'product_variations' con SKU                             │
+│ → Todo funciona simultáneamente sin conflictos ✓                          │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+╔════════════════════════════════════════════════════════════════════════════╗
+║                    🚀 LISTO PARA USAR                                     ║
+║                                                                            ║
+║  Archivos modificados:                                                    ║
+║  ✅ js/app.js          (Cart class)                                       ║
+║  ✅ js/tienda.js       (Modal + agregar al carrito)                       ║
+║  ✅ js/carrito.js      (Sync + render + eventos)                          ║
+║                                                                            ║
+║  Documentación:                                                           ║
+║  📄 ACTUALIZACION_CARRITO_VARIACIONES.md   (Detalles técnicos)            ║
+║                                                                            ║
+║  Próximo paso: Prueba en navegador y valida flujo completo               ║
+║                                                                            ║
+╚════════════════════════════════════════════════════════════════════════════╝

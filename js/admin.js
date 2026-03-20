@@ -73,14 +73,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   let productForm;
   let productFormId;
   let productName;
-  let productTalla;
-  let productColores;
   let productMaterial;
   let productRecomendaciones;
   let productDescription;
   let productCategory;
-  let productPrice;
-  let productStock;
   let productImage;
   let productImageFile;
   let productExtraImages;
@@ -97,14 +93,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     productForm = document.getElementById('product-form');
     productFormId = document.getElementById('product-form-id');
     productName = document.getElementById('product-name');
-    productTalla = document.getElementById('product-talla');
-    productColores = document.getElementById('product-colores');
     productMaterial = document.getElementById('product-material');
     productRecomendaciones = document.getElementById('product-recomendaciones');
     productDescription = document.getElementById('product-description');
     productCategory = document.getElementById('product-category');
-    productPrice = document.getElementById('product-price');
-    productStock = document.getElementById('product-stock');
     productImage = document.getElementById('product-image');
     productImageFile = document.getElementById('product-image-file');
     productExtraImages = document.getElementById('product-extra-images');
@@ -116,19 +108,28 @@ document.addEventListener('DOMContentLoaded', async () => {
   const tabs = document.querySelectorAll('.admin-tab');
   const sectionCompras = document.getElementById('section-compras');
   const sectionProductos = document.getElementById('section-productos');
+  const sectionVariaciones = document.getElementById('section-variaciones');
 
   tabs.forEach((tab) => {
     tab.addEventListener('click', () => {
       tabs.forEach((t) => t.classList.remove('active'));
       tab.classList.add('active');
       const which = tab.dataset.tab;
+      
+      // Ocultar todas las secciones
+      sectionCompras.classList.add('hidden');
+      sectionProductos.classList.add('hidden');
+      if (sectionVariaciones) sectionVariaciones.classList.add('hidden');
+      
+      // Mostrar la sección seleccionada
       if (which === 'compras') {
         sectionCompras.classList.remove('hidden');
-        sectionProductos.classList.add('hidden');
-      } else {
-        sectionCompras.classList.add('hidden');
+      } else if (which === 'productos') {
         sectionProductos.classList.remove('hidden');
         loadAdminProducts();
+      } else if (which === 'variaciones' && sectionVariaciones) {
+        sectionVariaciones.classList.remove('hidden');
+        // El módulo admin-variations.js manejará la carga de datos
       }
     });
   });
@@ -583,14 +584,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     productName.value = product?.name ?? '';
 
     productDescription.value = product?.description ?? '';
-    productTalla.value = product?.talla ?? '';
-    productColores.value = product?.colores ?? '';
     productMaterial.value = product?.material ?? '';
     productRecomendaciones.value = product?.recomendaciones ?? '';
 
     productCategory.value = product?.category ?? '';
-    productPrice.value = product != null ? product.price : '';
-    productStock.value = product != null ? (product.stock ?? 0) : 0;
     productImage.value = product?.image_url ?? '';
 
     if (productExtraImagesExisting) {
@@ -600,9 +597,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (productImageFile) productImageFile.value = '';
     if (productExtraImages) productExtraImages.value = '';
     
-    // Inicializar color picker
-    if (ColorPalette) {
-      ColorPalette.loadColors(product?.colores ?? '');
+    // Cargar data de variaciones en el builder
+    if (window.ProductVariationsBuilder && product?.id) {
+      // Cargar variaciones existentes desde BD
+      supabase.from('product_variations')
+        .select('*')
+        .eq('parent_product_id', product.id)
+        .then(({ data: variations }) => {
+          window.ProductVariationsBuilder.loadFromProduct(product, variations || []);
+        })
+        .catch((err) => {
+          console.error('Error cargando variaciones:', err);
+          window.ProductVariationsBuilder.loadFromProduct(product, []);
+        });
+    } else if (window.ProductVariationsBuilder) {
+      window.ProductVariationsBuilder.loadFromProduct(product, []);
     }
     
     productFormModal.classList.remove('hidden');
@@ -625,10 +634,31 @@ document.addEventListener('DOMContentLoaded', async () => {
   productForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     ensureAdminProductElements();
+
+    const productId = productFormId.value.trim();
+    const productNameVal = productName.value.trim();
+
+    // Validar nombre
+    if (!productNameVal) {
+      notify('El nombre del producto es requerido', 'warning');
+      return;
+    }
+
+    // Obtener variaciones del builder
+    let variationsArray = [];
+    if (window.ProductVariationsBuilder) {
+      variationsArray = window.ProductVariationsBuilder.getVariationsArray();
+    }
+
+    // Calcular precio y stock promedio/total de las variaciones
+    let avgPrice = 0, totalStock = 0;
+    if (variationsArray.length > 0) {
+      avgPrice = variationsArray.reduce((sum, v) => sum + (v.price || 0), 0) / variationsArray.length;
+      totalStock = variationsArray.reduce((sum, v) => sum + (v.stock || 0), 0);
+    }
+
     loadingModal.classList.remove('hidden');
     document.body.style.overflow = 'hidden';
-
-    const id = productFormId.value.trim();
 
     // Imagen principal: prioridad al archivo subido; si no, a la URL escrita
     let mainImageUrl = productImage.value.trim() || null;
@@ -656,40 +686,94 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     extraImages = extraImages.filter(Boolean);
 
+    // Construir payload del producto
     const payload = {
-      name: productName.value.trim(),
+      name: productNameVal,
       description: productDescription.value.trim(),
-      colores: (ColorPalette?.colorsToJSON(ColorPalette?.getSelectedColors()) || productColores.value.trim()),
-      talla: productTalla.value.trim(),
       material: productMaterial.value.trim(),
       recomendaciones: productRecomendaciones.value.trim(),
       category: productCategory.value.trim() || null,
-      price: parseFloat(productPrice.value) || 0,
-      stock: parseInt(productStock.value, 10) || 0,
+      price: avgPrice || 0,  // Precio promedio de variaciones
+      stock: totalStock,      // Stock total de variaciones
       image_url: mainImageUrl,
       extra_images: extraImages.length ? extraImages : null,
+      // Guardar colores y tallas en JSON para refer​encia
+      colores: window.ProductVariationsBuilder ? JSON.stringify(window.ProductVariationsBuilder.colors) : null,
+      talla: window.ProductVariationsBuilder ? window.ProductVariationsBuilder.tallas.join(', ') : '',
     };
-    if (id) {
-      const { error: err } = await supabase.from('products').update(payload).eq('id', id);
-      if (err) {
-        notify('Error al actualizar: ' + err.message, 'error');
-        loadingModal.classList.add('hidden');
-        document.body.style.overflow = '';
-        return;
+
+    try {
+      let newProductId = productId;
+
+      if (productId) {
+        // Editar producto existente
+        const { error: updateErr } = await supabase
+          .from('products')
+          .update(payload)
+          .eq('id', productId);
+
+        if (updateErr) throw updateErr;
+
+        // Eliminar variaciones antiguas
+        await supabase
+          .from('product_variations')
+          .delete()
+          .eq('parent_product_id', productId);
+
+      } else {
+        // Crear producto nuevo
+        const { data: insertedProduct, error: insertErr } = await supabase
+          .from('products')
+          .insert([payload])
+          .select('id');
+
+        if (insertErr) throw insertErr;
+        if (!insertedProduct || !insertedProduct[0]) throw new Error('No se pudo obtener el ID del nuevo producto');
+
+        newProductId = insertedProduct[0].id;
       }
-    } else {
-      const { error: err } = await supabase.from('products').insert(payload);
-      if (err) {
-        notify('Error al crear: ' + err.message, 'error');
-        loadingModal.classList.add('hidden');
-        document.body.style.overflow = '';
-        return;
+
+      // Guardar variaciones
+      if (variationsArray.length > 0 && newProductId) {
+        // Procesar imágenes de variaciones
+        const variationsToInsert = [];
+        for (const v of variationsArray) {
+          let imageUrl = v.imageUrl || null; // URL existente, si la hay
+          
+          // Si hay una imagen nueva (File), subirla
+          if (v.image instanceof File) {
+            imageUrl = await uploadImageFile(v.image, 'variations');
+          }
+          
+          variationsToInsert.push({
+            parent_product_id: newProductId,
+            sku: v.sku || `${payload.name.substring(0, 3).toUpperCase()}-${v.color}-${v.talla}`,
+            color: v.color,
+            talla: v.talla,
+            price: v.price || 0,
+            stock: v.stock || 0,
+            image_url: imageUrl,
+          });
+        }
+
+        const { error: variationErr } = await supabase
+          .from('product_variations')
+          .insert(variationsToInsert);
+
+        if (variationErr) throw variationErr;
       }
+
+      notify(productId ? 'Producto actualizado correctamente' : 'Producto creado correctamente', 'success');
+      loadingModal.classList.add('hidden');
+      document.body.style.overflow = '';
+      closeProductFormModal();
+      loadAdminProducts();
+
+    } catch (error) {
+      notify('Error: ' + (error?.message || 'Desconocido'), 'error');
+      loadingModal.classList.add('hidden');
+      document.body.style.overflow = '';
     }
-    loadingModal.classList.add('hidden');
-    document.body.style.overflow = '';
-    closeProductFormModal();
-    loadAdminProducts();
   });
 
   async function loadAdminProducts() {

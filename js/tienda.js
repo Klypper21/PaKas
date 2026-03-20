@@ -241,8 +241,6 @@ document.addEventListener('DOMContentLoaded', async () => {
           const isNew = created >= oneWeekAgo;
           const inCart = Cart.get().some(item => item.id === p.id);
           const hasOptions = (p.colores && p.colores.trim()) || (p.talla && p.talla.trim());
-          // Renderizar paleta de colores
-          const colorsPalette = ColorPalette ? ColorPalette.renderColorsPaletteForProduct(p.colores) : '';
           return `
       <div class="product-card product-card-clickable" data-id="${p.id}">
         <div class="img-wrap">
@@ -256,7 +254,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             <span class="rating-count">${p.reviews_count || 0} ${p.reviews_count === 1 ? 'reseña' : 'reseñas'}</span>
           </div>
           <p>${escapeHtml(formatProductDescription(p))}</p>
-          ${colorsPalette}
           <span class="price">${parseFloat(p.price).toFixed(2)} CUP</span>
           <button class="btn ${inCart ? 'btn-outline in-cart' : 'btn-primary'} btn-add-cart" style="margin-top:0.75rem;width:100%"
             data-id="${p.id}"
@@ -435,22 +432,148 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (modalMaterial) modalMaterial.textContent = product.material ? `Material: ${product.material}` : '';
     if (modalRecomendaciones) modalRecomendaciones.textContent = product.recomendaciones ? `Recomendaciones: ${product.recomendaciones}` : '';
 
+    // Función para actualizar tallas disponibles según color seleccionado
+    async function updateTallasForColor() {
+      const color = modalColor ? (modalColor.value || '').trim() : '';
+      if (!modalTalla) return;
+      
+      if (!color) {
+        // Si no hay color seleccionado, mostrar TODAS las tallas habilitadas
+        const allOptions = Array.from(modalTalla.querySelectorAll('option'));
+        allOptions.forEach(option => {
+          if (option.value !== '') {
+            option.disabled = false;
+          }
+        });
+        return;
+      }
+      
+      // Obtener tallas disponibles para este color
+      const availableTallas = await Cart.getAvailableTallasForColor(product.id, color);
+      
+      // Guardar la selección actual
+      const currentTalla = modalTalla.value;
+      
+      // Habilitar/deshabilitar opciones de talla
+      const allOptions = Array.from(modalTalla.querySelectorAll('option'));
+      allOptions.forEach(option => {
+        if (option.value === '') {
+          option.disabled = false; // Placeholder siempre habilitado
+        } else {
+          option.disabled = !availableTallas.includes(option.value);
+        }
+      });
+      
+      // Si la talla actual ya no está disponible, resetear
+      if (currentTalla && !availableTallas.includes(currentTalla)) {
+        modalTalla.value = '';
+      }
+    }
+    
+    // Función para actualizar colores disponibles según talla seleccionada
+    async function updateColoresForTalla() {
+      const talla = modalTalla ? (modalTalla.value || '').trim() : '';
+      if (!modalColor) return;
+      
+      if (!talla) {
+        // Si no hay talla seleccionada, habilitar TODOS los colores
+        const allOptions = Array.from(modalColor.querySelectorAll('option'));
+        allOptions.forEach(option => {
+          if (option.value !== '') {
+            option.disabled = false;
+          }
+        });
+        
+        // Habilitar todos los colores en la paleta visual
+        const paleteContainer = document.getElementById('modal-colors-palette');
+        if (paleteContainer) {
+          paleteContainer.querySelectorAll('.modal-color-option').forEach(option => {
+            option.classList.remove('disabled');
+            option.style.pointerEvents = '';
+            option.style.cursor = 'pointer';
+          });
+        }
+        return;
+      }
+      
+      // Obtener colores disponibles para esta talla
+      const availableColores = await Cart.getAvailableColoresForTalla(product.id, talla);
+      
+      // Guardar la selección actual
+      const currentColor = modalColor.value;
+      
+      // Habilitar/deshabilitar opciones de color en el dropdown
+      const allOptions = Array.from(modalColor.querySelectorAll('option'));
+      allOptions.forEach(option => {
+        if (option.value === '') {
+          option.disabled = false; // Placeholder siempre habilitado
+        } else {
+          option.disabled = !availableColores.includes(option.value);
+        }
+      });
+      
+      // Habilitar/deshabilitar colores en la paleta visual
+      const paleteContainer = document.getElementById('modal-colors-palette');
+      if (paleteContainer) {
+        paleteContainer.querySelectorAll('.modal-color-option').forEach(option => {
+          const colorName = option.dataset.colorValue;
+          const isAvailable = availableColores.includes(colorName);
+          option.classList.toggle('disabled', !isAvailable);
+          option.style.pointerEvents = isAvailable ? '' : 'none';
+          option.style.cursor = isAvailable ? 'pointer' : 'not-allowed';
+        });
+      }
+      
+      // Si el color actual ya no está disponible, resetear
+      if (currentColor && !availableColores.includes(currentColor)) {
+        modalColor.value = '';
+      }
+    }
+
     // Poblar colores
     if (modalColor) {
       modalColor.innerHTML = '<option value="">Seleccionar</option>';
       if (product.colores) {
+        // Paleta predeterminada para búsqueda de hex
+        const DEFAULT_COLORS = [
+          { name: 'Rojo', hex: '#EF4444' },
+          { name: 'Naranja', hex: '#F97316' },
+          { name: 'Amarillo', hex: '#FFD400' },
+          { name: 'Verde', hex: '#22C55E' },
+          { name: 'Azul', hex: '#3B82F6' },
+          { name: 'Violeta', hex: '#A855F7' },
+          { name: 'Rosa', hex: '#EC4899' },
+          { name: 'Negro', hex: '#1F2937' },
+          { name: 'Gris', hex: '#9CA3AF' },
+          { name: 'Blanco', hex: '#FFFFFF' },
+          { name: 'Beige', hex: '#D4AF9E' },
+          { name: 'Marrón', hex: '#92400E' },
+        ];
+
         // Intentar parsear como JSON o como texto simple
         let colorsArray = [];
         try {
-          colorsArray = JSON.parse(product.colores);
-          if (!Array.isArray(colorsArray)) colorsArray = [];
+          const parsed = JSON.parse(product.colores);
+          if (Array.isArray(parsed)) {
+            // Puede ser array de strings ['Rojo', 'Azul'] o array de objetos [{name, hex}]
+            colorsArray = parsed.map(item => {
+              if (typeof item === 'string') {
+                // Nuevo formato: solo nombre
+                const name = item.trim();
+                const colorObj = DEFAULT_COLORS.find(c => c.name.toLowerCase() === name.toLowerCase());
+                return colorObj || { name, hex: '#999999' };
+              } else {
+                // Formato legacy: ya tiene name y hex
+                return item;
+              }
+            });
+          }
         } catch {
-          // Formato de texto legado (Rojo, Azul, Negro)
+          // Formato de texto legado básico (Rojo, Azul, Negro)
           const names = product.colores.split(',').map(c => c.trim()).filter(Boolean);
           colorsArray = names.map(name => {
-            const defaultColors = ColorPalette?.getDefaultColors?.() || [];
-            const color = defaultColors.find(c => c.name.toLowerCase() === name.toLowerCase());
-            return color || { name, hex: '#999999' };
+            const colorObj = DEFAULT_COLORS.find(c => c.name.toLowerCase() === name.toLowerCase());
+            return colorObj || { name, hex: '#999999' };
           });
         }
 
@@ -468,13 +591,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
           // Agregar event listeners a las opciones de color
           paleteContainer.querySelectorAll('.modal-color-option').forEach(option => {
-            option.addEventListener('click', () => {
+            option.addEventListener('click', async () => {
               const colorValue = option.dataset.colorValue;
               modalColor.value = colorValue;
-              // Actualizar selección visual
+              // Actualizar selección visual en la paleta
               paleteContainer.querySelectorAll('.modal-color-option').forEach(opt => {
                 opt.classList.toggle('selected', opt === option);
               });
+              // Actualizar tallas disponibles para este color
+              await updateTallasForColor();
+              // Disparar actualización de precio y stock
+              updateVariationPriceAndStock();
             });
           });
         }
@@ -503,10 +630,123 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     }
 
+    // Inicializar mostrando todas las opciones (sin filtrar)
+    await updateTallasForColor();
+    await updateColoresForTalla();
+
+    // Función para marcar variaciones sin stock como deshabilitadas
+    async function markOutOfStockVariations() {
+      const outOfStock = await Cart.getOutOfStockVariations(product.id);
+      
+      // Marcar colores sin stock
+      if (outOfStock.colors && outOfStock.colors.length > 0) {
+        // Dropdown de colores
+        const colorOptions = Array.from(modalColor?.querySelectorAll('option') || []);
+        colorOptions.forEach(option => {
+          if (option.value && outOfStock.colors.includes(option.value)) {
+            option.disabled = true;
+          }
+        });
+        
+        // Paleta visual de colores
+        const paleteContainer = document.getElementById('modal-colors-palette');
+        if (paleteContainer) {
+          paleteContainer.querySelectorAll('.modal-color-option').forEach(option => {
+            if (outOfStock.colors.includes(option.dataset.colorValue)) {
+              option.classList.add('disabled');
+              option.style.pointerEvents = 'none';
+              option.style.cursor = 'not-allowed';
+            }
+          });
+        }
+      }
+      
+      // Marcar tallas sin stock
+      if (outOfStock.tallas && outOfStock.tallas.length > 0) {
+        const tallaOptions = Array.from(modalTalla?.querySelectorAll('option') || []);
+        tallaOptions.forEach(option => {
+          if (option.value && outOfStock.tallas.includes(option.value)) {
+            option.disabled = true;
+          }
+        });
+      }
+    }
+
+    // Marcar variaciones sin stock
+    await markOutOfStockVariations();
+
+    // Función para actualizar precio y stock cuando cambia variación
+    async function updateVariationPriceAndStock() {
+      const color = modalColor ? (modalColor.value || '').trim() : '';
+      const talla = modalTalla ? (modalTalla.value || '').trim() : '';
+      const hasOptions = (product.colores && product.colores.trim()) || (product.talla && product.talla.trim());
+      
+      // Validar que tanto color como talla estén seleccionados y tengan valor
+      if (hasOptions && color && talla) {
+        try {
+          // Buscar la variación específica
+          const variation = await Cart.getVariation(product.id, color, talla);
+          if (variation) {
+            priceEl.textContent = parseFloat(variation.price).toFixed(2) + ' CUP';
+            const colorDisplay = color ? ` (${color}` : '';
+            const tallaDisplay = talla ? `, ${talla})` : ')';
+            stockEl.textContent = (variation.stock ?? 0) > 0 ? `En stock: ${variation.stock}${colorDisplay}${tallaDisplay}` : `Agotado${colorDisplay}${tallaDisplay}`;
+            stockEl.className = 'product-modal-stock ' + ((variation.stock ?? 0) > 0 ? '' : 'out-of-stock');
+            addCartBtn.disabled = (variation.stock ?? 0) <= 0;
+          } else {
+            // Variación no encontrada, volver a valores del producto
+            priceEl.textContent = parseFloat(product.price).toFixed(2) + ' CUP';
+            const colorDisplay = color ? ` (${color}` : '';
+            const tallaDisplay = talla ? `, ${talla})` : ')';
+            stockEl.textContent = (product.stock ?? 10) > 0 ? `En stock: ${product.stock}${colorDisplay}${tallaDisplay}` : `Agotado${colorDisplay}${tallaDisplay}`;
+            stockEl.className = 'product-modal-stock ' + ((product.stock ?? 10) > 0 ? '' : 'out-of-stock');
+            addCartBtn.disabled = (product.stock ?? 10) <= 0;
+          }
+        } catch (e) {
+          console.error('Error fetching variation:', e);
+          // En caso de error, mostrar valores del producto
+          priceEl.textContent = parseFloat(product.price).toFixed(2) + ' CUP';
+          const colorDisplay = color ? ` (${color}` : '';
+          const tallaDisplay = talla ? `, ${talla})` : ')';
+          stockEl.textContent = (product.stock ?? 10) > 0 ? `En stock: ${product.stock}${colorDisplay}${tallaDisplay}` : `Agotado${colorDisplay}${tallaDisplay}`;
+          stockEl.className = 'product-modal-stock ' + ((product.stock ?? 10) > 0 ? '' : 'out-of-stock');
+          addCartBtn.disabled = (product.stock ?? 10) <= 0;
+        }
+      } else {
+        // Si no hay opciones o no están seleccionadas, volver a los valores del producto
+        priceEl.textContent = parseFloat(product.price).toFixed(2) + ' CUP';
+        stockEl.textContent = (product.stock ?? 10) > 0 ? `En stock: ${product.stock}` : 'Agotado - Selecciona color y talla';
+        stockEl.className = 'product-modal-stock ' + ((product.stock ?? 10) > 0 ? '' : 'out-of-stock');
+        addCartBtn.disabled = (product.stock ?? 10) <= 0;
+      }
+    }
+
     priceEl.textContent = parseFloat(product.price).toFixed(2) + ' CUP';
     stockEl.textContent =
       (product.stock ?? 10) > 0 ? `En stock (${product.stock})` : 'Agotado';
     stockEl.className = 'product-modal-stock ' + ((product.stock ?? 10) > 0 ? '' : 'out-of-stock');
+
+    // Agregar event listeners para cambios en color/talla
+    if (modalColor) {
+      modalColor.addEventListener('change', async () => {
+        await updateTallasForColor();
+        updateVariationPriceAndStock();
+        // Sincronizar visualización en la paleta
+        const paleteContainer = document.getElementById('modal-colors-palette');
+        if (paleteContainer) {
+          const selectedValue = modalColor.value;
+          paleteContainer.querySelectorAll('.modal-color-option').forEach(option => {
+            option.classList.toggle('selected', option.dataset.colorValue === selectedValue);
+          });
+        }
+      });
+    }
+    if (modalTalla) {
+      modalTalla.addEventListener('change', async () => {
+        await updateColoresForTalla();
+        updateVariationPriceAndStock();
+      });
+    }
 
     addCartBtn.dataset.id = product.id;
     addCartBtn.dataset.name = product.name;
@@ -526,8 +766,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         location.href = 'carrito.html';
         return;
       }
-      const selectedColor = modalColor ? modalColor.value : '';
-      const selectedTalla = modalTalla ? modalTalla.value : '';
+      const selectedColor = modalColor ? (modalColor.value || '').trim() : '';
+      const selectedTalla = modalTalla ? (modalTalla.value || '').trim() : '';
       const hasOptions = (product.colores && product.colores.trim()) || (product.talla && product.talla.trim());
       if (hasOptions && (!selectedColor || !selectedTalla)) {
         const notify = (msg, type = 'info', opts = {}) => (window.UI?.toast ? UI.toast(msg, type, opts) : null);
@@ -536,12 +776,34 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       (async () => {
         const notify = (msg, type = 'info', opts = {}) => (window.UI?.toast ? UI.toast(msg, type, opts) : null);
+        
+        // Obtener datos de la variación si existen
+        let price = parseFloat(product.price);
+        let sku = null;
+        let variationStock = null;
+        
+        if (hasOptions && selectedColor && selectedTalla) {
+          try {
+            // Buscar la variación específica
+            const variation = await Cart.getVariation(product.id, selectedColor, selectedTalla);
+            if (variation) {
+              price = parseFloat(variation.price) || price;
+              sku = variation.sku;
+              variationStock = Number(variation.stock) || 0;
+            }
+          } catch (e) {
+            console.error('Error getting variation:', e);
+          }
+        }
+        
         const item = {
           id: product.id,
           name: product.name,
-          price: parseFloat(product.price),
+          price: price,
           image_url: mainUrl,
-          options: hasOptions ? { color: selectedColor, talla: selectedTalla } : null
+          options: hasOptions ? { color: selectedColor, talla: selectedTalla } : null,
+          sku: sku,
+          variationStock: variationStock
         };
         const res = await Cart.addWithStock(item, 1, { notify });
         if (res.ok) notify('Producto añadido al <span class="toast-carrito-link">carrito</span>', 'success', { allowHtml: true });
@@ -891,4 +1153,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   syncSortUI();
   loadProducts();
   setTimeout(updatePlecasVisibility, 100);
+
+  // PATCH para soporte de Variaciones: Exponer funciones globalmente
+  window.openProductModal = openProductModal;
+  window.closeProductModal = closeProductModal;
+  window.productsCache = productsCache;
 });
