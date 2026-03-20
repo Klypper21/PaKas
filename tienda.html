@@ -9,6 +9,6 @@
 </head>
 <body>
   <p>Redirigiendo a la tienda… <a href="index.html">Ir ahora</a></p>
-  <script>location.replace('index.html');</script>
+  <script>location.replace(`index.html${location.search}${location.hash}`);</script>
 </body>
 </html>

@@ -61,6 +61,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   let currentSearch = '';
   let currentCategory = '';
   let currentSort = 'relevance';
+  let activeProductId = null;
+
+  const PRODUCT_QUERY_PARAM = 'producto';
 
   const loadPurchasedIds = () => {
     try {
@@ -77,6 +80,40 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   loadPurchasedIds();
 
+  function getProductIdFromUrl() {
+    const url = new URL(window.location.href);
+    return (url.searchParams.get(PRODUCT_QUERY_PARAM) || '').trim();
+  }
+
+  function buildProductUrl(productId) {
+    const url = new URL(window.location.href);
+    url.searchParams.set(PRODUCT_QUERY_PARAM, productId);
+    return url;
+  }
+
+  function clearProductUrl() {
+    const url = new URL(window.location.href);
+    url.searchParams.delete(PRODUCT_QUERY_PARAM);
+    return url;
+  }
+
+  async function copyToClipboard(text) {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+
+    const helper = document.createElement('textarea');
+    helper.value = text;
+    helper.setAttribute('readonly', 'readonly');
+    helper.style.position = 'fixed';
+    helper.style.top = '-9999px';
+    document.body.appendChild(helper);
+    helper.select();
+    document.execCommand('copy');
+    document.body.removeChild(helper);
+  }
+
   function formatProductDescription(product) {
     let desc = '';
     if (product.description) desc += product.description + ' ';
@@ -84,7 +121,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (product.colores) desc += `Colores: ${product.colores}. `;
     if (product.material) desc += `Material: ${product.material}. `;
     if (product.recomendaciones) desc += `Recomendaciones: ${product.recomendaciones}. `;
-    return desc.trim() || 'Sin descripción.';
+    return desc.trim() || 'Sin descripcion.';
+  }
+
+  function hasRecicladoTag(product) {
+    const categoryText = String(product?.category || '');
+    return /\breciclado\b/i.test(categoryText);
+  }
+
+  function getCartIconMarkup() {
+    return `
+      <span class="btn-add-cart-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="9" cy="20" r="1"></circle>
+          <circle cx="18" cy="20" r="1"></circle>
+          <path d="M3 4h2l2.2 10.2a1.8 1.8 0 0 0 1.76 1.4h8.94a1.8 1.8 0 0 0 1.76-1.4L22 7H7"></path>
+        </svg>
+      </span>
+    `;
   }
 
   const updateCartButtons = () => {
@@ -93,11 +147,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       const productId = btn.dataset.id;
       const inCart = Cart.get().some(item => item.id === productId);
       const outOfStock = btn.dataset.outOfStock === '1';
+      const label = outOfStock ? 'Agotado' : inCart ? 'Ir al carrito' : 'Agregar al carrito';
       btn.className = `btn ${inCart ? 'btn-outline in-cart' : 'btn-primary'} btn-add-cart`;
-      if (btn.style.width) btn.style.width = '100%'; // for grid
       btn.dataset.inCart = inCart ? '1' : '0';
-      btn.textContent = inCart ? 'En el carrito' : 'Añadir al carrito';
-      btn.title = inCart ? 'Ir al carrito' : '';
+      btn.innerHTML = getCartIconMarkup();
+      btn.setAttribute('aria-label', label);
+      btn.title = label;
       btn.disabled = outOfStock;
     });
 
@@ -107,7 +162,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const inCart = Cart.get().some(item => item.id === modalBtn.dataset.id);
       modalBtn.className = `btn ${inCart ? 'btn-outline in-cart' : 'btn-primary'} btn-block`;
       modalBtn.dataset.inCart = inCart ? '1' : '0';
-      modalBtn.textContent = inCart ? 'En el carrito' : 'Añadir al carrito';
+      modalBtn.textContent = inCart ? 'En el carrito' : 'Agregar al carrito';
       modalBtn.title = inCart ? 'Ir al carrito' : '';
       // keep disabled only if out of stock
       modalBtn.disabled = modalBtn.dataset.outOfStock === '1';
@@ -155,7 +210,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         p.avg_rating = stats.count ? stats.sum / stats.count : 0;
       });
     } catch {
-      // Si falla, simplemente no añadimos rating a las tarjetas
+      // Si falla, simplemente no anadimos rating a las tarjetas
     }
 
     allProducts = available;
@@ -233,37 +288,46 @@ document.addEventListener('DOMContentLoaded', async () => {
       filtered.sort(byCreatedDesc);
     }
 
-    const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
     grid.innerHTML = filtered
       .map(
         (p) => {
-          const created = p.created_at ? new Date(p.created_at).getTime() : 0;
-          const isNew = created >= oneWeekAgo;
           const inCart = Cart.get().some(item => item.id === p.id);
+          const outOfStock = (p.stock ?? 0) <= 0;
           const hasOptions = (p.colores && p.colores.trim()) || (p.talla && p.talla.trim());
+          const colorsPalette = window.ColorPalette?.renderColorsPaletteForProduct
+            ? window.ColorPalette.renderColorsPaletteForProduct(p.colores || '')
+            : '';
+          const buttonLabel = outOfStock ? 'Agotado' : inCart ? 'Ir al carrito' : 'Agregar al carrito';
           return `
       <div class="product-card product-card-clickable" data-id="${p.id}">
         <div class="img-wrap">
-          ${isNew ? '<span class="product-badge product-badge--new">New</span>' : ''}
           <img src="${p.image_url || 'https://placehold.co/400x500/1a1a2e/eaeaea?text=Producto'}" alt="${escapeHtml(p.name)}">
         </div>
         <div class="info">
           <h3>${escapeHtml(p.name)}</h3>
           <div class="product-card-rating">
             <span class="stars-display">${renderStars(p.avg_rating || 0)}</span>
-            <span class="rating-count">${p.reviews_count || 0} ${p.reviews_count === 1 ? 'reseña' : 'reseñas'}</span>
+            <span class="rating-count">${p.reviews_count || 0} ${p.reviews_count === 1 ? 'resena' : 'resenas'}</span>
           </div>
           <p>${escapeHtml(formatProductDescription(p))}</p>
-          <span class="price">${parseFloat(p.price).toFixed(2)} CUP</span>
-          <button class="btn ${inCart ? 'btn-outline in-cart' : 'btn-primary'} btn-add-cart" style="margin-top:0.75rem;width:100%"
-            data-id="${p.id}"
-            data-name="${escapeAttr(p.name || '')}"
-            data-price="${p.price}"
-            data-image="${escapeAttr(p.image_url || '')}"
-            data-out-of-stock="${(p.stock ?? 0) <= 0 ? '1' : '0'}"
-            data-has-options="${hasOptions ? '1' : '0'}">
-            ${inCart ? 'En el carrito' : 'Añadir al carrito'}
-          </button>
+          ${colorsPalette}
+          <div class="product-card-footer">
+            <span class="price">${parseFloat(p.price).toFixed(2)} CUP</span>
+            <button
+              type="button"
+              class="btn ${inCart ? 'btn-outline in-cart' : 'btn-primary'} btn-add-cart"
+              data-id="${p.id}"
+              data-name="${escapeAttr(p.name || '')}"
+              data-price="${p.price}"
+              data-image="${escapeAttr(p.image_url || '')}"
+              data-out-of-stock="${outOfStock ? '1' : '0'}"
+              data-has-options="${hasOptions ? '1' : '0'}"
+              aria-label="${buttonLabel}"
+              title="${buttonLabel}"
+              ${outOfStock ? 'disabled' : ''}>
+              ${getCartIconMarkup()}
+            </button>
+          </div>
         </div>
       </div>
     `;
@@ -306,7 +370,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       (async () => {
         const notify = (msg, type = 'info', opts = {}) => (window.UI?.toast ? UI.toast(msg, type, opts) : null);
         const res = await Cart.addWithStock({ id, name, price, image_url: image }, 1, { notify });
-        if (res.ok) notify('Producto añadido al <span class="toast-carrito-link">carrito</span>', 'success', { allowHtml: true });
+        if (res.ok) notify('Producto anadido al <span class="toast-carrito-link">carrito</span>', 'success', { allowHtml: true });
       })();
       return;
     }
@@ -314,10 +378,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (card) openProductModal(card.dataset.id);
   });
 
-  async function openProductModal(productId) {
+  async function openProductModal(productId, options = {}) {
+    const { syncHistory = true, historyMode = 'push' } = options;
     const modal = document.getElementById('product-modal');
-    const mainImg = document.getElementById('modal-main-img');
-    const thumbs = document.getElementById('modal-thumbs');
+    if (!modal) return;
+    const modalContent = modal?.querySelector('.product-modal-content');
     const title = document.getElementById('modal-title');
     const category = document.getElementById('modal-category');
     const ratingEl = document.getElementById('modal-rating');
@@ -325,27 +390,43 @@ document.addEventListener('DOMContentLoaded', async () => {
     const priceEl = document.getElementById('modal-price');
     const stockEl = document.getElementById('modal-stock');
     const addCartBtn = document.getElementById('modal-add-cart');
-    const reviewForm = document.getElementById('modal-review-form');
     const reviewLoginHint = document.getElementById('review-login-hint');
     const reviewFormFields = document.getElementById('review-form-fields');
     const reviewsList = document.getElementById('modal-reviews-list');
     const modalColor = document.getElementById('modal-color');
     const modalTalla = document.getElementById('modal-talla');
+    const modalColorsPalette = document.getElementById('modal-colors-palette');
+    const modalTallasPalette = document.getElementById('modal-tallas-palette');
     const modalMaterial = document.getElementById('modal-material');
     const modalRecomendaciones = document.getElementById('modal-recomendaciones');
+    const shareBtn = document.getElementById('modal-share');
+    const notify = (msg, type = 'info', opts = {}) => (window.UI?.toast ? UI.toast(msg, type, opts) : null);
 
     modal.classList.remove('hidden');
     document.body.style.overflow = 'hidden';
+    if (modalContent) modalContent.scrollTop = 0;
 
     let product = productsCache.find((p) => p.id === productId);
     if (!product) {
       const { data } = await supabase.from('products').select('*').eq('id', productId).single();
       product = data;
-      if (product) productsCache.push(product);
+      if (product && !productsCache.some((p) => p.id === product.id)) productsCache.push(product);
     }
     if (!product) {
-      closeProductModal();
+      closeProductModal({ syncHistory: false });
+      if (getProductIdFromUrl() === productId) {
+        history.replaceState(history.state, '', clearProductUrl());
+      }
       return;
+    }
+
+    activeProductId = product.id;
+    modal.dataset.productId = product.id;
+    modal.dataset.historyMode = syncHistory ? historyMode : 'route';
+    if (syncHistory && getProductIdFromUrl() !== product.id) {
+      const nextUrl = buildProductUrl(product.id);
+      const historyMethod = historyMode === 'replace' ? 'replaceState' : 'pushState';
+      history[historyMethod]({ productId: product.id }, '', nextUrl);
     }
 
     const mainUrl = product.image_url || 'https://placehold.co/400x500/1a1a2e/eaeaea?text=Producto';
@@ -360,11 +441,56 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
         })()
       : [];
-    const allImages = [mainUrl, ...extraImages.filter((u) => u && u !== mainUrl)];
+    const normalizeImageUrl = (value) => (typeof value === 'string' ? value.trim() : '');
+    const seenImages = new Set();
+    let allImages = [];
+    const variationImageMap = {};
+
+    [mainUrl, ...extraImages]
+      .map(normalizeImageUrl)
+      .filter(Boolean)
+      .forEach((url) => {
+        const normalized = url.toLowerCase();
+        if (seenImages.has(normalized)) return;
+        seenImages.add(normalized);
+        allImages.push(url);
+      });
+
+    // Orden de galeria: principal + extras + variaciones (sin duplicados)
+    try {
+      const { data: variationsForGallery, error: variationsGalleryError } = await supabase
+        .from('product_variations')
+        .select('color,talla,image_url')
+        .eq('parent_product_id', product.id);
+
+      if (variationsGalleryError) {
+        console.warn('[Galeria] No se pudieron cargar imagenes de variaciones:', variationsGalleryError.message);
+      } else {
+        (variationsForGallery || []).forEach((variation) => {
+          const color = (variation.color || '').trim();
+          const talla = (variation.talla || '').trim();
+          const key = `${color}-${talla}`;
+          const imageUrl = normalizeImageUrl(variation.image_url);
+
+          if (!imageUrl) return;
+          variationImageMap[key] = imageUrl;
+
+          const normalized = imageUrl.toLowerCase();
+          if (seenImages.has(normalized)) return;
+          seenImages.add(normalized);
+          allImages.push(imageUrl);
+        });
+      }
+    } catch (variationGalleryError) {
+      console.warn('[Galeria] Error al preparar imagenes de variaciones:', variationGalleryError);
+    }
+
+    if (!allImages.length) allImages = [mainUrl];
+    const productUrl = buildProductUrl(product.id).toString();
 
     const carouselInner = document.getElementById('modal-carousel-inner');
     const indicators = document.getElementById('modal-carousel-indicators');
-    carouselInner.innerHTML = allImages.map((url, i) => `<img src="${url}" alt="${product.name} - ${i + 1}">`).join('');
+    carouselInner.innerHTML = allImages.map((url, i) => `<img src="${url}" alt="${escapeAttr(product.name)} - ${i + 1}">`).join('');
     indicators.innerHTML = allImages.map((_, i) => `<div class="indicator ${i === 0 ? 'active' : ''}" data-index="${i}"></div>`).join('');
 
     let currentIndex = 0;
@@ -375,6 +501,25 @@ document.addEventListener('DOMContentLoaded', async () => {
       indicators.querySelectorAll('.indicator').forEach((ind, i) => {
         ind.classList.toggle('active', i === currentIndex);
       });
+    }
+
+    function switchToImage(imageUrl) {
+      if (!imageUrl) {
+        currentIndex = 0;
+        updateCarousel();
+        return;
+      }
+
+      const target = String(imageUrl).trim().toLowerCase();
+      const imageIndex = allImages.findIndex((img) => String(img).trim().toLowerCase() === target);
+      if (imageIndex === -1) {
+        currentIndex = 0;
+        updateCarousel();
+        return;
+      }
+
+      currentIndex = imageIndex;
+      updateCarousel();
     }
 
     // Touch and mouse events for swipe
@@ -404,137 +549,162 @@ document.addEventListener('DOMContentLoaded', async () => {
       isDragging = false;
     }
 
-    carouselInner.addEventListener('touchstart', (e) => startDrag(e.touches[0].clientX));
-    carouselInner.addEventListener('touchmove', (e) => moveDrag(e.touches[0].clientX));
-    carouselInner.addEventListener('touchend', endDrag);
+    updateCarousel();
 
-    carouselInner.addEventListener('mousedown', (e) => {
+    carouselInner.ontouchstart = (e) => startDrag(e.touches[0].clientX);
+    carouselInner.ontouchmove = (e) => moveDrag(e.touches[0].clientX);
+    carouselInner.ontouchend = endDrag;
+
+    carouselInner.onmousedown = (e) => {
       e.preventDefault();
       startDrag(e.clientX);
-    });
-    carouselInner.addEventListener('mousemove', (e) => {
+    };
+    carouselInner.onmousemove = (e) => {
       if (isDragging) moveDrag(e.clientX);
-    });
-    carouselInner.addEventListener('mouseup', endDrag);
-    carouselInner.addEventListener('mouseleave', endDrag);
+    };
+    carouselInner.onmouseup = endDrag;
+    carouselInner.onmouseleave = endDrag;
 
     // Click on indicators
-    indicators.addEventListener('click', (e) => {
-      if (e.target.classList.contains('indicator')) {
-        currentIndex = parseInt(e.target.dataset.index);
+    indicators.onclick = (e) => {
+      const indicator = e.target.closest('.indicator');
+      if (indicator) {
+        currentIndex = parseInt(indicator.dataset.index, 10);
         updateCarousel();
       }
-    });
+    };
 
     title.textContent = product.name;
-    category.textContent = product.category || '';
-    desc.textContent = product.description || 'Sin descripción.';
+    if (category) {
+      const showRecicladoTag = hasRecicladoTag(product);
+      category.textContent = showRecicladoTag ? 'Reciclado' : '';
+      category.hidden = !showRecicladoTag;
+    }
+    desc.textContent = product.description || 'Sin descripcion.';
     if (modalMaterial) modalMaterial.textContent = product.material ? `Material: ${product.material}` : '';
     if (modalRecomendaciones) modalRecomendaciones.textContent = product.recomendaciones ? `Recomendaciones: ${product.recomendaciones}` : '';
+    if (shareBtn) {
+      shareBtn.onclick = async () => {
+        try {
+          if (navigator.share) {
+            await navigator.share({
+              title: `${product.name} | PaKas`,
+              text: 'Mira este producto en PaKas',
+              url: productUrl,
+            });
+            return;
+          }
+          await copyToClipboard(productUrl);
+          notify('Enlace copiado al portapapeles.', 'success');
+        } catch (error) {
+          if (error?.name === 'AbortError') return;
+          try {
+            await copyToClipboard(productUrl);
+            notify('Enlace copiado al portapapeles.', 'success');
+          } catch {
+            window.prompt('Copia este enlace:', productUrl);
+          }
+        }
+      };
+    }
 
-    // Función para actualizar tallas disponibles según color seleccionado
+    function syncColorPaletteSelection() {
+      if (!modalColorsPalette || !modalColor) return;
+      const selectedColor = (modalColor.value || '').trim();
+      modalColorsPalette.querySelectorAll('.modal-color-option').forEach((option) => {
+        option.classList.toggle('selected', option.dataset.colorValue === selectedColor);
+      });
+    }
+
+    function syncTallaPaletteSelection() {
+      if (!modalTallasPalette || !modalTalla) return;
+      const selectedTalla = (modalTalla.value || '').trim();
+      modalTallasPalette.querySelectorAll('.modal-talla-option').forEach((option) => {
+        option.classList.toggle('selected', option.dataset.tallaValue === selectedTalla);
+      });
+    }
+
+    function setPaletteAvailability(container, optionSelector, datasetKey, availableValues = null) {
+      if (!container) return;
+      container.querySelectorAll(optionSelector).forEach((option) => {
+        const optionValue = option.dataset[datasetKey];
+        const isAvailable = !availableValues || availableValues.includes(optionValue);
+        option.classList.toggle('disabled', !isAvailable);
+        option.style.pointerEvents = isAvailable ? '' : 'none';
+        option.style.cursor = isAvailable ? 'pointer' : 'not-allowed';
+      });
+    }
+
+    // Funcion para actualizar tallas disponibles segun color seleccionado
     async function updateTallasForColor() {
       const color = modalColor ? (modalColor.value || '').trim() : '';
       if (!modalTalla) return;
-      
+
       if (!color) {
-        // Si no hay color seleccionado, mostrar TODAS las tallas habilitadas
         const allOptions = Array.from(modalTalla.querySelectorAll('option'));
-        allOptions.forEach(option => {
-          if (option.value !== '') {
-            option.disabled = false;
-          }
+        allOptions.forEach((option) => {
+          option.disabled = false;
         });
+        setPaletteAvailability(modalTallasPalette, '.modal-talla-option', 'tallaValue', null);
+        syncTallaPaletteSelection();
         return;
       }
-      
-      // Obtener tallas disponibles para este color
+
       const availableTallas = await Cart.getAvailableTallasForColor(product.id, color);
-      
-      // Guardar la selección actual
       const currentTalla = modalTalla.value;
-      
-      // Habilitar/deshabilitar opciones de talla
+
       const allOptions = Array.from(modalTalla.querySelectorAll('option'));
-      allOptions.forEach(option => {
-        if (option.value === '') {
-          option.disabled = false; // Placeholder siempre habilitado
-        } else {
-          option.disabled = !availableTallas.includes(option.value);
-        }
+      allOptions.forEach((option) => {
+        option.disabled = !availableTallas.includes(option.value);
       });
-      
-      // Si la talla actual ya no está disponible, resetear
+
+      setPaletteAvailability(modalTallasPalette, '.modal-talla-option', 'tallaValue', availableTallas);
+
       if (currentTalla && !availableTallas.includes(currentTalla)) {
         modalTalla.value = '';
       }
+
+      syncTallaPaletteSelection();
     }
-    
-    // Función para actualizar colores disponibles según talla seleccionada
+
+    // Funcion para actualizar colores disponibles segun talla seleccionada
     async function updateColoresForTalla() {
       const talla = modalTalla ? (modalTalla.value || '').trim() : '';
       if (!modalColor) return;
-      
+
       if (!talla) {
-        // Si no hay talla seleccionada, habilitar TODOS los colores
         const allOptions = Array.from(modalColor.querySelectorAll('option'));
-        allOptions.forEach(option => {
-          if (option.value !== '') {
-            option.disabled = false;
-          }
+        allOptions.forEach((option) => {
+          option.disabled = false;
         });
-        
-        // Habilitar todos los colores en la paleta visual
-        const paleteContainer = document.getElementById('modal-colors-palette');
-        if (paleteContainer) {
-          paleteContainer.querySelectorAll('.modal-color-option').forEach(option => {
-            option.classList.remove('disabled');
-            option.style.pointerEvents = '';
-            option.style.cursor = 'pointer';
-          });
-        }
+        setPaletteAvailability(modalColorsPalette, '.modal-color-option', 'colorValue', null);
+        syncColorPaletteSelection();
         return;
       }
-      
-      // Obtener colores disponibles para esta talla
+
       const availableColores = await Cart.getAvailableColoresForTalla(product.id, talla);
-      
-      // Guardar la selección actual
       const currentColor = modalColor.value;
-      
-      // Habilitar/deshabilitar opciones de color en el dropdown
+
       const allOptions = Array.from(modalColor.querySelectorAll('option'));
-      allOptions.forEach(option => {
-        if (option.value === '') {
-          option.disabled = false; // Placeholder siempre habilitado
-        } else {
-          option.disabled = !availableColores.includes(option.value);
-        }
+      allOptions.forEach((option) => {
+        option.disabled = !availableColores.includes(option.value);
       });
-      
-      // Habilitar/deshabilitar colores en la paleta visual
-      const paleteContainer = document.getElementById('modal-colors-palette');
-      if (paleteContainer) {
-        paleteContainer.querySelectorAll('.modal-color-option').forEach(option => {
-          const colorName = option.dataset.colorValue;
-          const isAvailable = availableColores.includes(colorName);
-          option.classList.toggle('disabled', !isAvailable);
-          option.style.pointerEvents = isAvailable ? '' : 'none';
-          option.style.cursor = isAvailable ? 'pointer' : 'not-allowed';
-        });
-      }
-      
-      // Si el color actual ya no está disponible, resetear
+
+      setPaletteAvailability(modalColorsPalette, '.modal-color-option', 'colorValue', availableColores);
+
       if (currentColor && !availableColores.includes(currentColor)) {
         modalColor.value = '';
       }
+
+      syncColorPaletteSelection();
     }
 
     // Poblar colores
     if (modalColor) {
-      modalColor.innerHTML = '<option value="">Seleccionar</option>';
+      modalColor.innerHTML = '';
+      if (modalColorsPalette) modalColorsPalette.innerHTML = '';
+
       if (product.colores) {
-        // Paleta predeterminada para búsqueda de hex
         const DEFAULT_COLORS = [
           { name: 'Rojo', hex: '#EF4444' },
           { name: 'Naranja', hex: '#F97316' },
@@ -547,111 +717,132 @@ document.addEventListener('DOMContentLoaded', async () => {
           { name: 'Gris', hex: '#9CA3AF' },
           { name: 'Blanco', hex: '#FFFFFF' },
           { name: 'Beige', hex: '#D4AF9E' },
-          { name: 'Marrón', hex: '#92400E' },
+          { name: 'Marron', hex: '#92400E' },
         ];
 
-        // Intentar parsear como JSON o como texto simple
         let colorsArray = [];
         try {
           const parsed = JSON.parse(product.colores);
           if (Array.isArray(parsed)) {
-            // Puede ser array de strings ['Rojo', 'Azul'] o array de objetos [{name, hex}]
-            colorsArray = parsed.map(item => {
+            colorsArray = parsed.map((item) => {
               if (typeof item === 'string') {
-                // Nuevo formato: solo nombre
                 const name = item.trim();
-                const colorObj = DEFAULT_COLORS.find(c => c.name.toLowerCase() === name.toLowerCase());
+                const colorObj = DEFAULT_COLORS.find((c) => c.name.toLowerCase() === name.toLowerCase());
                 return colorObj || { name, hex: '#999999' };
-              } else {
-                // Formato legacy: ya tiene name y hex
-                return item;
               }
+              return item;
             });
           }
         } catch {
-          // Formato de texto legado básico (Rojo, Azul, Negro)
-          const names = product.colores.split(',').map(c => c.trim()).filter(Boolean);
-          colorsArray = names.map(name => {
-            const colorObj = DEFAULT_COLORS.find(c => c.name.toLowerCase() === name.toLowerCase());
+          const names = product.colores.split(',').map((c) => c.trim()).filter(Boolean);
+          colorsArray = names.map((name) => {
+            const colorObj = DEFAULT_COLORS.find((c) => c.name.toLowerCase() === name.toLowerCase());
             return colorObj || { name, hex: '#999999' };
           });
         }
 
-        // Renderizar paleta visual
-        const paleteContainer = document.getElementById('modal-colors-palette');
-        if (paleteContainer) {
-          paleteContainer.innerHTML = colorsArray.map(color => `
-            <div class="modal-color-option" 
-                 data-color-value="${color.name || color.hex}"
-                 title="${color.name}">
-              <div class="modal-color-circle" style="background-color: ${color.hex};"></div>
-              <span>${color.name}</span>
-            </div>
-          `).join('');
+        if (modalColorsPalette) {
+          modalColorsPalette.innerHTML = colorsArray
+            .map((color) => {
+              const colorValue = color.name || color.hex;
+              const colorName = color.name || color.hex;
+              const colorHex = color.hex || '#999999';
+              return `
+                <div class="modal-color-option"
+                     data-color-value="${colorValue}"
+                     title="${colorName}">
+                  <div class="modal-color-circle" style="background-color: ${colorHex};"></div>
+                  <span>${colorName}</span>
+                </div>
+              `;
+            })
+            .join('');
 
-          // Agregar event listeners a las opciones de color
-          paleteContainer.querySelectorAll('.modal-color-option').forEach(option => {
-            option.addEventListener('click', async () => {
-              const colorValue = option.dataset.colorValue;
+          modalColorsPalette.querySelectorAll('.modal-color-option').forEach((option) => {
+            option.onclick = async () => {
+              if (option.classList.contains('disabled')) return;
+              const colorValue = option.dataset.colorValue || '';
               modalColor.value = colorValue;
-              // Actualizar selección visual en la paleta
-              paleteContainer.querySelectorAll('.modal-color-option').forEach(opt => {
-                opt.classList.toggle('selected', opt === option);
-              });
-              // Actualizar tallas disponibles para este color
+              syncColorPaletteSelection();
               await updateTallasForColor();
-              // Disparar actualización de precio y stock
-              updateVariationPriceAndStock();
-            });
+              await updateVariationPriceAndStock();
+            };
           });
         }
 
-        // También llenar el select como fallback
-        colorsArray.forEach(color => {
+        colorsArray.forEach((color) => {
           const option = document.createElement('option');
           option.value = color.name || color.hex;
-          option.textContent = color.name || color.hex;
+          option.textContent = (color.name || color.hex || '').toUpperCase();
           modalColor.appendChild(option);
         });
       }
+
+      syncColorPaletteSelection();
     }
 
-    // Poblar tallas
+    // Poblar tallas (paleta visual en mayusculas)
     if (modalTalla) {
-      modalTalla.innerHTML = '<option value="">Seleccionar</option>';
+      modalTalla.innerHTML = '';
+      if (modalTallasPalette) modalTallasPalette.innerHTML = '';
+
       if (product.talla) {
-        const tallas = product.talla.split(',').map(t => t.trim()).filter(Boolean);
-        tallas.forEach(talla => {
+        const tallas = product.talla.split(',').map((t) => t.trim()).filter(Boolean);
+
+        tallas.forEach((talla) => {
           const option = document.createElement('option');
           option.value = talla;
-          option.textContent = talla;
+          option.textContent = talla.toUpperCase();
           modalTalla.appendChild(option);
         });
+
+        if (modalTallasPalette) {
+          modalTallasPalette.innerHTML = tallas
+            .map(
+              (talla) => `
+                <div class="modal-talla-option"
+                     data-talla-value="${talla}"
+                     title="${talla.toUpperCase()}">
+                  <span>${talla.toUpperCase()}</span>
+                </div>
+              `
+            )
+            .join('');
+
+          modalTallasPalette.querySelectorAll('.modal-talla-option').forEach((option) => {
+            option.onclick = async () => {
+              if (option.classList.contains('disabled')) return;
+              const tallaValue = option.dataset.tallaValue || '';
+              modalTalla.value = tallaValue;
+              syncTallaPaletteSelection();
+              await updateColoresForTalla();
+              await updateVariationPriceAndStock();
+            };
+          });
+        }
       }
+
+      syncTallaPaletteSelection();
     }
 
     // Inicializar mostrando todas las opciones (sin filtrar)
     await updateTallasForColor();
     await updateColoresForTalla();
 
-    // Función para marcar variaciones sin stock como deshabilitadas
+    // Funcion para marcar variaciones sin stock como deshabilitadas
     async function markOutOfStockVariations() {
       const outOfStock = await Cart.getOutOfStockVariations(product.id);
-      
-      // Marcar colores sin stock
+
       if (outOfStock.colors && outOfStock.colors.length > 0) {
-        // Dropdown de colores
         const colorOptions = Array.from(modalColor?.querySelectorAll('option') || []);
-        colorOptions.forEach(option => {
+        colorOptions.forEach((option) => {
           if (option.value && outOfStock.colors.includes(option.value)) {
             option.disabled = true;
           }
         });
-        
-        // Paleta visual de colores
-        const paleteContainer = document.getElementById('modal-colors-palette');
-        if (paleteContainer) {
-          paleteContainer.querySelectorAll('.modal-color-option').forEach(option => {
+
+        if (modalColorsPalette) {
+          modalColorsPalette.querySelectorAll('.modal-color-option').forEach((option) => {
             if (outOfStock.colors.includes(option.dataset.colorValue)) {
               option.classList.add('disabled');
               option.style.pointerEvents = 'none';
@@ -660,31 +851,43 @@ document.addEventListener('DOMContentLoaded', async () => {
           });
         }
       }
-      
-      // Marcar tallas sin stock
+
       if (outOfStock.tallas && outOfStock.tallas.length > 0) {
         const tallaOptions = Array.from(modalTalla?.querySelectorAll('option') || []);
-        tallaOptions.forEach(option => {
+        tallaOptions.forEach((option) => {
           if (option.value && outOfStock.tallas.includes(option.value)) {
             option.disabled = true;
           }
         });
+
+        if (modalTallasPalette) {
+          modalTallasPalette.querySelectorAll('.modal-talla-option').forEach((option) => {
+            if (outOfStock.tallas.includes(option.dataset.tallaValue)) {
+              option.classList.add('disabled');
+              option.style.pointerEvents = 'none';
+              option.style.cursor = 'not-allowed';
+            }
+          });
+        }
       }
+
+      syncColorPaletteSelection();
+      syncTallaPaletteSelection();
     }
 
     // Marcar variaciones sin stock
     await markOutOfStockVariations();
 
-    // Función para actualizar precio y stock cuando cambia variación
+    // Funcion para actualizar precio y stock cuando cambia variacion
     async function updateVariationPriceAndStock() {
       const color = modalColor ? (modalColor.value || '').trim() : '';
       const talla = modalTalla ? (modalTalla.value || '').trim() : '';
       const hasOptions = (product.colores && product.colores.trim()) || (product.talla && product.talla.trim());
       
-      // Validar que tanto color como talla estén seleccionados y tengan valor
+      // Validar que tanto color como talla esten seleccionados y tengan valor
       if (hasOptions && color && talla) {
         try {
-          // Buscar la variación específica
+          // Buscar la variacion especifica
           const variation = await Cart.getVariation(product.id, color, talla);
           if (variation) {
             priceEl.textContent = parseFloat(variation.price).toFixed(2) + ' CUP';
@@ -693,14 +896,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             stockEl.textContent = (variation.stock ?? 0) > 0 ? `En stock: ${variation.stock}${colorDisplay}${tallaDisplay}` : `Agotado${colorDisplay}${tallaDisplay}`;
             stockEl.className = 'product-modal-stock ' + ((variation.stock ?? 0) > 0 ? '' : 'out-of-stock');
             addCartBtn.disabled = (variation.stock ?? 0) <= 0;
+            const variationKey = `${color}-${talla}`;
+            switchToImage(variation.image_url || variationImageMap[variationKey] || null);
           } else {
-            // Variación no encontrada, volver a valores del producto
+            // Variacion no encontrada, volver a valores del producto
             priceEl.textContent = parseFloat(product.price).toFixed(2) + ' CUP';
             const colorDisplay = color ? ` (${color}` : '';
             const tallaDisplay = talla ? `, ${talla})` : ')';
             stockEl.textContent = (product.stock ?? 10) > 0 ? `En stock: ${product.stock}${colorDisplay}${tallaDisplay}` : `Agotado${colorDisplay}${tallaDisplay}`;
             stockEl.className = 'product-modal-stock ' + ((product.stock ?? 10) > 0 ? '' : 'out-of-stock');
             addCartBtn.disabled = (product.stock ?? 10) <= 0;
+            switchToImage(null);
           }
         } catch (e) {
           console.error('Error fetching variation:', e);
@@ -711,13 +917,15 @@ document.addEventListener('DOMContentLoaded', async () => {
           stockEl.textContent = (product.stock ?? 10) > 0 ? `En stock: ${product.stock}${colorDisplay}${tallaDisplay}` : `Agotado${colorDisplay}${tallaDisplay}`;
           stockEl.className = 'product-modal-stock ' + ((product.stock ?? 10) > 0 ? '' : 'out-of-stock');
           addCartBtn.disabled = (product.stock ?? 10) <= 0;
+          switchToImage(null);
         }
       } else {
-        // Si no hay opciones o no están seleccionadas, volver a los valores del producto
+        // Si no hay opciones o no estan seleccionadas, volver a los valores del producto
         priceEl.textContent = parseFloat(product.price).toFixed(2) + ' CUP';
         stockEl.textContent = (product.stock ?? 10) > 0 ? `En stock: ${product.stock}` : 'Agotado - Selecciona color y talla';
         stockEl.className = 'product-modal-stock ' + ((product.stock ?? 10) > 0 ? '' : 'out-of-stock');
         addCartBtn.disabled = (product.stock ?? 10) <= 0;
+        switchToImage(null);
       }
     }
 
@@ -726,26 +934,20 @@ document.addEventListener('DOMContentLoaded', async () => {
       (product.stock ?? 10) > 0 ? `En stock (${product.stock})` : 'Agotado';
     stockEl.className = 'product-modal-stock ' + ((product.stock ?? 10) > 0 ? '' : 'out-of-stock');
 
-    // Agregar event listeners para cambios en color/talla
+    // Agregar event listeners para fallback en los selects internos
     if (modalColor) {
-      modalColor.addEventListener('change', async () => {
+      modalColor.onchange = async () => {
         await updateTallasForColor();
-        updateVariationPriceAndStock();
-        // Sincronizar visualización en la paleta
-        const paleteContainer = document.getElementById('modal-colors-palette');
-        if (paleteContainer) {
-          const selectedValue = modalColor.value;
-          paleteContainer.querySelectorAll('.modal-color-option').forEach(option => {
-            option.classList.toggle('selected', option.dataset.colorValue === selectedValue);
-          });
-        }
-      });
+        syncColorPaletteSelection();
+        await updateVariationPriceAndStock();
+      };
     }
     if (modalTalla) {
-      modalTalla.addEventListener('change', async () => {
+      modalTalla.onchange = async () => {
         await updateColoresForTalla();
-        updateVariationPriceAndStock();
-      });
+        syncTallaPaletteSelection();
+        await updateVariationPriceAndStock();
+      };
     }
 
     addCartBtn.dataset.id = product.id;
@@ -757,7 +959,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     addCartBtn.className = `btn ${inCart ? 'btn-outline in-cart' : 'btn-primary'} btn-block`;
     const outOfStock = (product.stock ?? 10) <= 0;
     addCartBtn.disabled = outOfStock;
-    addCartBtn.textContent = inCart ? 'En el carrito' : 'Añadir al carrito';
+    addCartBtn.textContent = inCart ? 'En el carrito' : 'Agregar al carrito';
     addCartBtn.title = inCart ? 'Ir al carrito' : '';
     addCartBtn.onclick = (ev) => {
       ev.preventDefault();
@@ -777,14 +979,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       (async () => {
         const notify = (msg, type = 'info', opts = {}) => (window.UI?.toast ? UI.toast(msg, type, opts) : null);
         
-        // Obtener datos de la variación si existen
+        // Obtener datos de la variacion si existen
         let price = parseFloat(product.price);
         let sku = null;
         let variationStock = null;
         
         if (hasOptions && selectedColor && selectedTalla) {
           try {
-            // Buscar la variación específica
+            // Buscar la variacion especifica
             const variation = await Cart.getVariation(product.id, selectedColor, selectedTalla);
             if (variation) {
               price = parseFloat(variation.price) || price;
@@ -806,7 +1008,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           variationStock: variationStock
         };
         const res = await Cart.addWithStock(item, 1, { notify });
-        if (res.ok) notify('Producto añadido al <span class="toast-carrito-link">carrito</span>', 'success', { allowHtml: true });
+        if (res.ok) notify('Producto anadido al <span class="toast-carrito-link">carrito</span>', 'success', { allowHtml: true });
       })();
     };
 
@@ -825,7 +1027,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       <span class="stars-display" title="${rounded} de 5">
         ${renderStars(rounded)}
       </span>
-      <span class="rating-count">${reviews?.length || 0} ${reviews?.length === 1 ? 'reseña' : 'reseñas'}</span>
+      <span class="rating-count">${reviews?.length || 0} ${reviews?.length === 1 ? 'resena' : 'resenas'}</span>
     `;
 
     const user = Auth.supabase ? (await Auth.getUser()) : null;
@@ -858,7 +1060,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       .join('');
 
     if (!reviews?.length) {
-      reviewsList.innerHTML = '<p class="no-reviews">Aún no hay reseñas. ¡Sé el primero en opinar!</p>';
+      reviewsList.innerHTML = '<p class="no-reviews">Aun no hay resenas. Se el primero en opinar!</p>';
     }
 
     // Recommendations
@@ -888,16 +1090,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         </div>
       `).join('');
 
-    recommendationsEl.addEventListener('click', (e) => {
+    recommendationsEl.onclick = (e) => {
       const card = e.target.closest('.recommendation-card');
       if (card) openProductModal(card.dataset.id);
-    });
+    };
   }
 
   function renderStars(avg) {
     const n = Math.round(avg);
-    return '<span class="star filled">★</span>'.repeat(n) +
-      '<span class="star">☆</span>'.repeat(5 - n);
+    return '<span class="star filled">&#9733;</span>'.repeat(n) +
+      '<span class="star">&#9734;</span>'.repeat(5 - n);
   }
 
   function formatDate(iso) {
@@ -938,17 +1140,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   async function submitReview(productId) {
     if (!selectedRating) {
-      if (window.UI?.toast) UI.toast('Selecciona una calificación de 1 a 5 estrellas.', 'warning');
+      if (window.UI?.toast) UI.toast('Selecciona una calificacion de 1 a 5 estrellas.', 'warning');
       return;
     }
     const user = await Auth.getUser();
     if (!user) {
-      if (window.UI?.toast) UI.toast('Debes iniciar sesión para enviar una reseña.', 'warning');
+      if (window.UI?.toast) UI.toast('Debes iniciar sesion para enviar una resena.', 'warning');
       return;
     }
     const profile = await Auth.getProfile(user.id);
     if (!profile?.full_name?.trim() || !profile?.phone?.trim()) {
-      if (window.UI?.toast) UI.toast('Completa tu perfil (nombre y teléfono) para poder publicar reseñas.', 'warning');
+      if (window.UI?.toast) UI.toast('Completa tu perfil (nombre y telefono) para poder publicar resenas.', 'warning');
       return;
     }
     const user_name = profile.full_name.trim();
@@ -964,7 +1166,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       { onConflict: 'product_id,user_id' }
     );
     if (error) {
-      if (window.UI?.toast) UI.toast('Error al enviar la reseña: ' + error.message, 'error');
+      if (window.UI?.toast) UI.toast('Error al enviar la resena: ' + error.message, 'error');
       return;
     }
     resetReviewForm();
@@ -972,15 +1174,55 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (card) openProductModal(productId);
   }
 
-  function closeProductModal() {
-    document.getElementById('product-modal').classList.add('hidden');
+  function closeProductModal(options = {}) {
+    const { syncHistory = true } = options;
+    const modal = document.getElementById('product-modal');
+    if (!modal || modal.classList.contains('hidden')) return;
+
+    const modalProductId = modal.dataset.productId || activeProductId || '';
+    const historyMode = modal.dataset.historyMode || 'none';
+
+    modal.classList.add('hidden');
     document.body.style.overflow = '';
+    modal.dataset.productId = '';
+    modal.dataset.historyMode = 'none';
+    activeProductId = null;
+
+    if (!syncHistory) return;
+
+    const currentProductId = getProductIdFromUrl();
+    if (!currentProductId) return;
+
+    if (historyMode === 'push' && currentProductId === modalProductId) {
+      history.back();
+      return;
+    }
+
+    history.replaceState(history.state, '', clearProductUrl());
+  }
+
+  async function syncProductModalWithUrl() {
+    const productId = getProductIdFromUrl();
+    const modal = document.getElementById('product-modal');
+    const isOpen = modal && !modal.classList.contains('hidden');
+
+    if (productId) {
+      if (!isOpen || activeProductId !== productId) {
+        await openProductModal(productId, { syncHistory: false });
+      }
+      return;
+    }
+
+    if (isOpen) closeProductModal({ syncHistory: false });
   }
 
   document.querySelector('.product-modal-backdrop').onclick = closeProductModal;
   document.querySelector('.product-modal-close').onclick = closeProductModal;
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeProductModal();
+  });
+  window.addEventListener('popstate', () => {
+    syncProductModalWithUrl();
   });
 
   // Update buttons when cart changes
@@ -1034,7 +1276,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     suggestionsEl.innerHTML = slice
       .map(
         (m) =>
-          `<li role="option" class="search-suggestions__item ${m.type === 'category' ? 'search-suggestions__item--category' : ''}" data-suggestion="${escapeAttr(m.text)}">${escapeHtml(m.text)}${m.type === 'category' ? '<span class="search-suggestions__label">Categoría</span>' : ''}</li>`
+          `<li role="option" class="search-suggestions__item ${m.type === 'category' ? 'search-suggestions__item--category' : ''}" data-suggestion="${escapeAttr(m.text)}">${escapeHtml(m.text)}${m.type === 'category' ? '<span class="search-suggestions__label">Categoria</span>' : ''}</li>`
       )
       .join('');
     suggestionsEl.setAttribute('aria-hidden', slice.length ? 'false' : 'true');
@@ -1151,7 +1393,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   syncSortUI();
-  loadProducts();
+  await loadProducts();
+  await syncProductModalWithUrl();
   setTimeout(updatePlecasVisibility, 100);
 
   // PATCH para soporte de Variaciones: Exponer funciones globalmente
@@ -1159,3 +1402,5 @@ document.addEventListener('DOMContentLoaded', async () => {
   window.closeProductModal = closeProductModal;
   window.productsCache = productsCache;
 });
+
+

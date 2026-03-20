@@ -88,59 +88,69 @@ document.addEventListener('DOMContentLoaded', async () => {
           })()
         : [];
 
-    // FIX: Cargar imágenes de variaciones desde BD CORRECTAMENTE
-    let allImages = [mainUrl, ...extraImages.filter((u) => u && u !== mainUrl)];
-    let variationImageMap = {}; // Mapear variaciones a sus imágenes
-    
-    console.log('[Variations] ===== INICIO CARGA GALERÍA =====');
-    console.log('[Variations] Imágenes iniciales (main + extras):', allImages.length);
-    
-    // FIX CRÍTICO: Cargar variaciones ANTES de renderizar carousel
+    // Orden de galería: principal + extras + variaciones (sin duplicados)
+    const normalizeImageUrl = (value) => (typeof value === 'string' ? value.trim() : '');
+    const seenImages = new Set();
+    let allImages = [];
+    let variationImageMap = {};
+
+    [mainUrl, ...extraImages]
+      .map(normalizeImageUrl)
+      .filter(Boolean)
+      .forEach((imageUrl) => {
+        const normalized = imageUrl.toLowerCase();
+        if (seenImages.has(normalized)) return;
+        seenImages.add(normalized);
+        allImages.push(imageUrl);
+      });
+
+    console.log('[Variations] ===== INICIO CARGA GALERIA =====');
+    console.log('[Variations] Imagenes iniciales (main + extras):', allImages.length);
+
     try {
       if (window.supabase) {
         const { data: allVariations, error: varError } = await supabase
           .from('product_variations')
           .select('color, talla, image_url, sku')
           .eq('parent_product_id', productId);
-        
+
         if (varError) {
           console.error('[Variations] Error cargando variaciones:', varError);
         } else if (allVariations && allVariations.length > 0) {
-          console.log(`[Variations] ✅ Variaciones cargadas: ${allVariations.length}`);
-          let imagenSubida = 0;
-          
-          // Procesar TODAS las variaciones
-          allVariations.forEach(v => {
-            const key = `${v.color}-${v.talla}`;
-            
-            // IMPORTANTE: Verificar que image_url exista Y no esté vacío
-            if (v.image_url && v.image_url.trim().length > 0) {
-              variationImageMap[key] = v.image_url;
-              console.log(`[Variations]   ✅ ${key}: ${v.image_url.substring(0, 40)}...`);
-              
-              // FIX: Usar método robusto para evitar duplicados
-              const urlLower = v.image_url.toLowerCase();
-              const existe = allImages.some(img => img.toLowerCase() === urlLower);
-              
-              if (!existe) {
-                allImages.push(v.image_url);
-                imagenSubida++;
-                console.log(`[Variations]      → Agregada a galería (índice ${allImages.length - 1})`);
-              } else {
-                console.log(`[Variations]      → Ya estaba en galería`);
-              }
-            } else {
-              console.log(`[Variations]   ❌ ${key}: sin imagen`);
+          console.log(`[Variations] Variaciones cargadas: ${allVariations.length}`);
+          let addedVariationImages = 0;
+
+          allVariations.forEach((variation) => {
+            const color = (variation.color || '').trim();
+            const talla = (variation.talla || '').trim();
+            const key = `${color}-${talla}`;
+            const imageUrl = normalizeImageUrl(variation.image_url);
+
+            if (!imageUrl) {
+              console.log(`[Variations] ${key}: sin imagen`);
+              return;
             }
+
+            variationImageMap[key] = imageUrl;
+            const normalized = imageUrl.toLowerCase();
+            if (seenImages.has(normalized)) {
+              console.log(`[Variations] ${key}: ya estaba en galeria`);
+              return;
+            }
+
+            seenImages.add(normalized);
+            allImages.push(imageUrl);
+            addedVariationImages += 1;
+            console.log(`[Variations] ${key}: agregada a galeria (indice ${allImages.length - 1})`);
           });
-          
-          console.log(`[Variations] 📊 Imágenes de variaciones agregadas: ${imagenSubida}`);
+
+          console.log(`[Variations] Imagenes de variaciones agregadas: ${addedVariationImages}`);
         } else {
-          console.log('[Variations] ⚠️  No hay variaciones para este producto');
+          console.log('[Variations] No hay variaciones para este producto');
         }
       }
     } catch (err) {
-      console.error('[Variations] ❌ Error cargando imágenes de variaciones:', err);
+      console.error('[Variations] Error cargando imagenes de variaciones:', err);
     }
     
     console.log(`[Variations] 📸 GALERÍA FINAL: ${allImages.length} imágenes totales`);
