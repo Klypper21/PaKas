@@ -23,6 +23,20 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Guardar referencia al openProductModal original
   const originalOpenProductModal = window.openProductModal;
+  const NEW_PRODUCT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+  function hasRecicladoTag(product) {
+    return String(product?.category || '')
+      .split(/[\s,]+/)
+      .some((token) => token.trim().toLowerCase() === 'reciclado');
+  }
+
+  function hasNovedadTag(product) {
+    if (!product?.created_at) return false;
+    const createdAtMs = new Date(product.created_at).getTime();
+    if (!Number.isFinite(createdAtMs)) return false;
+    return Date.now() - createdAtMs < NEW_PRODUCT_WINDOW_MS;
+  }
 
   /**
    * MEJORA: openProductModal mejorado que integra variaciones
@@ -70,7 +84,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     if (modalTitle) modalTitle.textContent = product.name;
     if (modalDesc) modalDesc.textContent = product.description || 'Sin descripción.';
-    if (modalCategory) modalCategory.textContent = product.category || '';
+    if (modalCategory) {
+      const categoryTags = [];
+      if (hasRecicladoTag(product)) categoryTags.push('Reciclado');
+      if (hasNovedadTag(product)) categoryTags.push('Novedad');
+      modalCategory.textContent = categoryTags.join(' · ');
+      modalCategory.hidden = categoryTags.length === 0;
+    }
     if (modalMaterial) modalMaterial.textContent = product.material ? `Material: ${product.material}` : '';
     if (modalRecomendaciones) modalRecomendaciones.textContent = product.recomendaciones ? `Recomendaciones: ${product.recomendaciones}` : '';
 

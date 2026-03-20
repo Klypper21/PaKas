@@ -124,9 +124,99 @@ document.addEventListener('DOMContentLoaded', async () => {
     return desc.trim() || 'Sin descripcion.';
   }
 
+  const NEW_PRODUCT_WINDOW_DAYS = 7;
+  const NEW_PRODUCT_WINDOW_MS = NEW_PRODUCT_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+  const NEW_CATEGORY_TAG = 'Novedad';
+
+  function normalizeCategoryAlias(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    if (!normalized) return '';
+    if (
+      normalized === 'nuevo' ||
+      normalized === 'nueva' ||
+      normalized === 'nuevos' ||
+      normalized === 'nuevas' ||
+      normalized === 'novedad' ||
+      normalized === 'novedades'
+    ) {
+      return 'novedad';
+    }
+    return normalized;
+  }
+
+  function parseRawCategoryTokens(categoryValue) {
+    return String(categoryValue || '')
+      .split(/[\s,]+/)
+      .map((token) => token.trim())
+      .filter(Boolean);
+  }
+
+  function dedupeCategoryTokens(tokens = []) {
+    const seen = new Set();
+    const unique = [];
+    tokens.forEach((token) => {
+      const normalized = String(token || '').trim().toLowerCase();
+      if (!normalized || seen.has(normalized)) return;
+      seen.add(normalized);
+      unique.push(token);
+    });
+    return unique;
+  }
+
+  function isProductNew(product) {
+    if (!product?.created_at) return false;
+    const createdAtMs = new Date(product.created_at).getTime();
+    if (!Number.isFinite(createdAtMs)) return false;
+    return Date.now() - createdAtMs < NEW_PRODUCT_WINDOW_MS;
+  }
+
   function hasRecicladoTag(product) {
-    const categoryText = String(product?.category || '');
-    return /\breciclado\b/i.test(categoryText);
+    return parseRawCategoryTokens(product?.category || '').some(
+      (token) => String(token).trim().toLowerCase() === 'reciclado'
+    );
+  }
+
+  function getProductCategoryTokens(product) {
+    const rawTokens = parseRawCategoryTokens(product?.category || '');
+    const tokensWithoutManagedNovedad = rawTokens.filter(
+      (token) => normalizeCategoryAlias(token) !== 'novedad'
+    );
+
+    if (isProductNew(product)) {
+      tokensWithoutManagedNovedad.unshift(NEW_CATEGORY_TAG);
+    }
+
+    return dedupeCategoryTokens(tokensWithoutManagedNovedad);
+  }
+
+  function getProductCategorySearchText(product) {
+    return getProductCategoryTokens(product).join(' ');
+  }
+
+  function hasNovedadTag(product) {
+    return getProductCategoryTokens(product).some(
+      (token) => normalizeCategoryAlias(token) === 'novedad'
+    );
+  }
+
+  function productHasCategory(product, selectedCategory) {
+    const selected = normalizeCategoryAlias(selectedCategory);
+    if (!selected) return true;
+
+    return getProductCategoryTokens(product).some(
+      (token) => normalizeCategoryAlias(token) === selected
+    );
+  }
+
+  function productsShareCategory(productA, productB) {
+    const categoriesA = new Set(
+      getProductCategoryTokens(productA).map((token) => normalizeCategoryAlias(token))
+    );
+    const categoriesB = getProductCategoryTokens(productB).map((token) =>
+      normalizeCategoryAlias(token)
+    );
+
+    return categoriesB.some((category) => categoriesA.has(category));
   }
 
   function getCartIconMarkup() {
@@ -225,18 +315,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const term = currentSearch.trim().toLowerCase();
-    const category = currentCategory.trim().toLowerCase();
+    const category = currentCategory.trim();
 
     let filtered = allProducts.filter((p) => {
-      if (category) {
-        const productCategories = (p.category || '')
-          .toLowerCase()
-          .split(/[\s,]+/)
-          .filter(Boolean);
-        if (!productCategories.length || !productCategories.includes(category)) return false;
-      }
+      if (category && !productHasCategory(p, category)) return false;
       if (!term) return true;
-      const haystack = `${p.name || ''} ${formatProductDescription(p)} ${p.category || ''}`.toLowerCase();
+      const haystack = `${p.name || ''} ${formatProductDescription(p)} ${getProductCategorySearchText(p)}`.toLowerCase();
       return haystack.includes(term);
     });
 
@@ -249,10 +333,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (term) {
         const name = (p.name || '').toLowerCase();
         const desc = (p.description || '').toLowerCase();
-        const category = (p.category || '').toLowerCase();
+        const categoryText = getProductCategorySearchText(p).toLowerCase();
         if (name.includes(term)) score += 4;
         if (name.startsWith(term)) score += 1;
-        if (category.includes(term)) score += 2;
+        if (categoryText.includes(term)) score += 2;
         if (desc.includes(term)) score += 1;
       }
 
@@ -294,13 +378,24 @@ document.addEventListener('DOMContentLoaded', async () => {
           const inCart = Cart.get().some(item => item.id === p.id);
           const outOfStock = (p.stock ?? 0) <= 0;
           const hasOptions = (p.colores && p.colores.trim()) || (p.talla && p.talla.trim());
+          const showRecicladoTag = hasRecicladoTag(p);
+          const showNovedadTag = hasNovedadTag(p);
           const colorsPalette = window.ColorPalette?.renderColorsPaletteForProduct
             ? window.ColorPalette.renderColorsPaletteForProduct(p.colores || '')
             : '';
           const buttonLabel = outOfStock ? 'Agotado' : inCart ? 'Ir al carrito' : 'Agregar al carrito';
+          const badgesMarkup = showRecicladoTag || showNovedadTag
+            ? `
+              <div class="product-card-badges">
+                ${showRecicladoTag ? '<span class="product-badge product-badge--category">Reciclado</span>' : ''}
+                ${showNovedadTag ? '<span class="product-badge product-badge--new">NEW</span>' : ''}
+              </div>
+            `
+            : '';
           return `
       <div class="product-card product-card-clickable" data-id="${p.id}">
         <div class="img-wrap">
+          ${badgesMarkup}
           <img src="${p.image_url || 'https://placehold.co/400x500/1a1a2e/eaeaea?text=Producto'}" alt="${escapeHtml(p.name)}">
         </div>
         <div class="info">
@@ -576,9 +671,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     title.textContent = product.name;
     if (category) {
-      const showRecicladoTag = hasRecicladoTag(product);
-      category.textContent = showRecicladoTag ? 'Reciclado' : '';
-      category.hidden = !showRecicladoTag;
+      const categoryTags = [];
+      if (hasRecicladoTag(product)) categoryTags.push('Reciclado');
+      if (hasNovedadTag(product)) categoryTags.push('Novedad');
+      category.textContent = categoryTags.join(' · ');
+      category.hidden = categoryTags.length === 0;
     }
     desc.textContent = product.description || 'Sin descripcion.';
     if (modalMaterial) modalMaterial.textContent = product.material ? `Material: ${product.material}` : '';
@@ -1069,7 +1166,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       .filter(p => p.id !== productId)
       .map(p => {
         let score = 0;
-        if (p.category === product.category) score += 10;
+        if (productsShareCategory(p, product)) score += 10;
         const nameWords = (p.name || '').toLowerCase().split(/\s+/);
         const productNameWords = (product.name || '').toLowerCase().split(/\s+/);
         const commonWords = nameWords.filter(w => productNameWords.includes(w)).length;
@@ -1079,16 +1176,42 @@ document.addEventListener('DOMContentLoaded', async () => {
       .sort((a, b) => b.score - a.score)
       .slice(0, 4);
 
-    recommendationsEl.innerHTML = relatedProducts
-      .map(p => `
-        <div class="recommendation-card" data-id="${p.id}">
-          <img src="${p.image_url || 'https://placehold.co/400x500/1a1a2e/eaeaea?text=Producto'}" alt="${escapeHtml(p.name)}">
-          <div class="info">
-            <h4>${escapeHtml(p.name)}</h4>
-            <span class="price">${parseFloat(p.price).toFixed(2)} CUP</span>
-          </div>
-        </div>
-      `).join('');
+    if (!relatedProducts.length) {
+      recommendationsEl.innerHTML = '<p class="recommendations-empty">No hay productos relacionados en este momento.</p>';
+    } else {
+      recommendationsEl.innerHTML = relatedProducts
+        .map((p) => {
+          const productCategories = getProductCategoryTokens(p);
+          const firstCategory =
+            productCategories.find((token) => normalizeCategoryAlias(token) !== 'novedad') ||
+            productCategories[0] ||
+            'Relacionado';
+          const reviewsCount = Number(p.reviews_count) || 0;
+          const avgRatingRaw = Number(p.avg_rating);
+          const avgRating = Number.isFinite(avgRatingRaw) ? avgRatingRaw : 0;
+          const ratingLabel = reviewsCount
+            ? `${avgRating.toFixed(1)}/5 (${reviewsCount} ${reviewsCount === 1 ? 'resena' : 'resenas'})`
+            : 'Sin resenas';
+          const numericPrice = Number.parseFloat(p.price);
+          const formattedPrice = Number.isFinite(numericPrice) ? numericPrice.toFixed(2) : '0.00';
+          const safeName = escapeHtml(p.name || 'Producto');
+          return `
+        <button type="button" class="recommendation-card" data-id="${p.id}" aria-label="Ver ${escapeAttr(p.name || 'producto')}">
+          <span class="recommendation-media">
+            <img src="${p.image_url || 'https://placehold.co/400x500/1a1a2e/eaeaea?text=Producto'}" alt="${safeName}" loading="lazy" decoding="async">
+            <span class="recommendation-chip">${escapeHtml(firstCategory)}</span>
+          </span>
+          <span class="info">
+            <h4>${safeName}</h4>
+            <span class="recommendation-meta">${ratingLabel}</span>
+            <span class="price">${formattedPrice} CUP</span>
+            <span class="recommendation-cta">Ver detalles</span>
+          </span>
+        </button>
+      `;
+        })
+        .join('');
+    }
 
     recommendationsEl.onclick = (e) => {
       const card = e.target.closest('.recommendation-card');
@@ -1235,10 +1358,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const categories = new Set();
     (allProducts || []).forEach((p) => {
       if (p.name && p.name.trim()) names.add(p.name.trim());
-      const cat = (p.category || '').trim();
-      if (cat) {
-        cat.split(/[\s,]+/).filter(Boolean).forEach((c) => categories.add(c.trim()));
-      }
+      getProductCategoryTokens(p).forEach((categoryToken) => {
+        categories.add(categoryToken.trim());
+      });
     });
     return {
       names: Array.from(names),

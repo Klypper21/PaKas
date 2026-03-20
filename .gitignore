@@ -35,3 +35,5 @@ vendor/
 # Variables de entorno privadas
 config.local.js
 secrets.json
+
+.claude/settings.json

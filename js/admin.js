@@ -35,6 +35,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     return desc.trim() || 'Sin descripción.';
   }
 
+  const AUTO_NEW_CATEGORY_TAG = 'Novedad';
+
+  function parseCategoryTokens(rawCategory) {
+    return String(rawCategory || '')
+      .split(/[\s,]+/)
+      .map((token) => token.trim())
+      .filter(Boolean);
+  }
+
+  function addCategoryTag(rawCategory, tagLabel) {
+    const normalizedTag = String(tagLabel || '').trim().toLowerCase();
+    if (!normalizedTag) return String(rawCategory || '').trim();
+
+    const tokens = parseCategoryTokens(rawCategory);
+    const alreadyHasTag = tokens.some((token) => token.toLowerCase() === normalizedTag);
+    if (!alreadyHasTag) tokens.push(tagLabel);
+    return tokens.join(', ');
+  }
+
   // Iconos inline (evita dependencias externas)
   const ICONS = {
     check: `
@@ -687,12 +706,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     extraImages = extraImages.filter(Boolean);
 
     // Construir payload del producto
+    const rawCategoryValue = productCategory.value.trim();
+    const categoryValue = productId
+      ? rawCategoryValue
+      : addCategoryTag(rawCategoryValue, AUTO_NEW_CATEGORY_TAG);
+
     const payload = {
       name: productNameVal,
       description: productDescription.value.trim(),
       material: productMaterial.value.trim(),
       recomendaciones: productRecomendaciones.value.trim(),
-      category: productCategory.value.trim() || null,
+      category: categoryValue || null,
       price: avgPrice || 0,  // Precio promedio de variaciones
       stock: totalStock,      // Stock total de variaciones
       image_url: mainImageUrl,
