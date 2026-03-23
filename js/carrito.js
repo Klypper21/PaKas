@@ -308,7 +308,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const acc = (bankAccount?.textContent || '').trim() || '0000 0000 0000 0000';
       const concept = (orderRef?.textContent || '').trim() || 'EMP';
       const data = `Cuenta: ${acc}\nMonto: ${total.toFixed(2)} CUP\nConcepto: ${concept}`;
-      qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(data)}`;
+      qrImg.src = `/img/qr_pago.png`;
     }
   }
 
@@ -530,7 +530,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     reservedStock = { byProduct: byProduct };
 
-    orderRef.textContent = 'EMP-' + Date.now().toString(36).toUpperCase();
+    orderRef.textContent = '+53 5 9372581';
     if (transferRef) transferRef.value = '';
     if (payCash) payCash.checked = false;
     if (payTransfer) payTransfer.checked = false;
