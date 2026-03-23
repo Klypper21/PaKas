@@ -37,11 +37,40 @@ document.addEventListener('DOMContentLoaded', async () => {
     else console.log(type.toUpperCase() + ':', msg);
   };
 
+  function getProductColorNames(product) {
+    if (!product?.colores) return [];
+
+    try {
+      const parsed = JSON.parse(product.colores);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((color) => {
+            if (typeof color === 'string') return color.trim();
+            return String(color?.name || color?.hex || '').trim();
+          })
+          .filter(Boolean);
+      }
+    } catch {}
+
+    const parsedColors = window.ColorPalette?.colorsFromJSON?.(product.colores) || [];
+    if (parsedColors.length) {
+      return parsedColors
+        .map((color) => (color?.name || color?.hex || '').trim())
+        .filter(Boolean);
+    }
+
+    return String(product.colores)
+      .split(',')
+      .map((color) => color.trim())
+      .filter(Boolean);
+  }
+
   function formatProductDescription(product) {
     let desc = '';
     if (product.description) desc += product.description + ' ';
     if (product.talla) desc += `Talla: ${product.talla}. `;
-    if (product.colores) desc += `Colores: ${product.colores}. `;
+    const colorNames = getProductColorNames(product);
+    if (colorNames.length) desc += `Colores: ${colorNames.join(', ')}. `;
     if (product.material) desc += `Material: ${product.material}. `;
     if (product.recomendaciones) desc += `Recomendaciones: ${product.recomendaciones}. `;
     return desc.trim() || 'Sin descripción.';

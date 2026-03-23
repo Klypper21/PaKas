@@ -470,11 +470,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     tallaSelect.innerHTML = '<option value="">Seleccionar</option>';
 
     if (product.colores) {
-      let colorsArray = [];
-      try {
-        colorsArray = JSON.parse(product.colores);
-        if (!Array.isArray(colorsArray)) colorsArray = [];
-      } catch {
+      let colorsArray = window.ColorPalette?.colorsFromJSON?.(product.colores) || [];
+      if (!colorsArray.length) {
         const names = product.colores.split(',').map(c => c.trim()).filter(Boolean);
         colorsArray = names.map(name => {
           const defaultColors = window.ColorPalette?.getDefaultColors?.() || [];

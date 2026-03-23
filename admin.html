@@ -106,6 +106,15 @@
           <div class="product-colors-section">
             <label>Colores disponibles</label>
             <div id="admin-colors-palette" class="admin-colors-palette"></div>
+            <div class="product-custom-color-section">
+              <p class="product-custom-color-title">Color personalizado</p>
+              <div class="product-custom-color-inputs">
+                <input type="color" id="product-custom-color-hex" value="#000000" aria-label="Elegir color personalizado">
+                <input type="text" id="product-custom-color-name" placeholder="Nombre del color" class="product-color-input" maxlength="30">
+                <button type="button" class="btn btn-outline btn-sm" id="btn-add-custom-color">Anadir color</button>
+              </div>
+              <small class="field-hint">Elige el tono y escribe el nombre que vera el cliente.</small>
+            </div>
             <div id="product-colors-list" class="product-items-list"></div>
           </div>
           

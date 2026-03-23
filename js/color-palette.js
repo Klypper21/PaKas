@@ -27,12 +27,48 @@ function colorsToJSON(colorsArray) {
   return JSON.stringify(colorsArray);
 }
 
+function findDefaultColorByName(name) {
+  const normalizedName = String(name || '').trim().toLowerCase();
+  if (!normalizedName) return null;
+  return DEFAULT_COLORS.find(color => color.name.toLowerCase() === normalizedName) || null;
+}
+
+function normalizeColorEntry(colorEntry) {
+  if (typeof colorEntry === 'string') {
+    const name = colorEntry.trim();
+    if (!name) return null;
+    const defaultColor = findDefaultColorByName(name);
+    return defaultColor
+      ? { name: defaultColor.name, hex: defaultColor.hex.toUpperCase() }
+      : { name, hex: '#999999' };
+  }
+
+  if (!colorEntry || typeof colorEntry !== 'object') return null;
+
+  const rawName = String(colorEntry.name || colorEntry.hex || '').trim();
+  const rawHex = String(colorEntry.hex || '').trim();
+  if (!rawName && !rawHex) return null;
+
+  const defaultColor = findDefaultColorByName(rawName);
+  const name = rawName || defaultColor?.name || rawHex.toUpperCase();
+  const hex = (rawHex || defaultColor?.hex || '#999999').toUpperCase();
+
+  return { name, hex };
+}
+
+function normalizeColorsArray(colorsArray) {
+  if (!Array.isArray(colorsArray)) return [];
+  return colorsArray
+    .map(normalizeColorEntry)
+    .filter(Boolean);
+}
+
 // Función para parsear colores desde JSON
 function colorsFromJSON(jsonStr) {
   try {
     if (!jsonStr) return [];
     const parsed = JSON.parse(jsonStr);
-    return Array.isArray(parsed) ? parsed : [];
+    return normalizeColorsArray(parsed);
   } catch (e) {
     // Si es un string de colores separados por comas, intentar parsear
     return [];
@@ -209,10 +245,7 @@ function loadColors(jsonStr) {
   if (selectedColors.length === 0 && jsonStr) {
     // Intentar parsear formato de texto legado
     const names = jsonStr.split(',').map(n => n.trim()).filter(Boolean);
-    selectedColors = names.map(name => {
-      const color = DEFAULT_COLORS.find(c => c.name.toLowerCase() === name.toLowerCase());
-      return color || { name, hex: '#999999' };
-    });
+    selectedColors = normalizeColorsArray(names);
   }
   renderColorPicker();
 }
@@ -252,10 +285,11 @@ window.ColorPalette = {
   updateSelectedColorsDisplay,
   loadColors,
   getSelectedColors: () => [...selectedColors],
-  setSelectedColors: (colors) => { selectedColors = colors; },
+  setSelectedColors: (colors) => { selectedColors = normalizeColorsArray(colors); },
   renderColorsPaletteForProduct,
   colorsToJSON,
   colorsFromJSON,
+  normalizeColors: normalizeColorsArray,
   updateHiddenInput,
   getDefaultColors: () => [...DEFAULT_COLORS],
 };

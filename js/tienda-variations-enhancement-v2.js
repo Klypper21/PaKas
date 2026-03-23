@@ -390,7 +390,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   function populateStandardOptions(product, colorSelect, tallaSelect, colorsPaletteContainer) {
     if (!product) return;
 
-    const colors = (product.colores ? product.colores.split(',').map(c => c.trim()) : []).filter(Boolean);
+    let colors = [];
+    if (product.colores) {
+      const parsedColors = window.ColorPalette?.colorsFromJSON?.(product.colores) || [];
+      if (parsedColors.length) {
+        colors = parsedColors
+          .map(color => (color?.name || color?.hex || '').trim())
+          .filter(Boolean);
+      } else {
+        colors = product.colores.split(',').map(c => c.trim()).filter(Boolean);
+      }
+    }
     const tallas = (product.talla ? product.talla.split(',').map(t => t.trim()) : []).filter(Boolean);
 
     if (colorSelect) {

@@ -8,6 +8,7 @@ class ProductVariationsBuilder {
   constructor() {
     this.colors = [];
     this.tallas = [];
+    this.colorHexMap = {};
     this.variations = {}; // { "color-talla": { stock, price, sku } }
     this.variationImages = {}; // { "color-talla": File object }
     this.variationImageUrls = {}; // { "color-talla": image URL for existing variations }
@@ -17,7 +18,7 @@ class ProductVariationsBuilder {
 
   init() {
     // Paleta de colores predeterminada
-    this.DEFAULT_COLORS = [
+    this.DEFAULT_COLORS = window.ColorPalette?.getDefaultColors?.() || [
       { name: 'Rojo', hex: '#EF4444' },
       { name: 'Naranja', hex: '#F97316' },
       { name: 'Amarillo', hex: '#FFD400' },
@@ -29,14 +30,17 @@ class ProductVariationsBuilder {
       { name: 'Gris', hex: '#9CA3AF' },
       { name: 'Blanco', hex: '#FFFFFF' },
       { name: 'Beige', hex: '#D4AF9E' },
-      { name: 'Marrón', hex: '#92400E' },
+      { name: 'Marron', hex: '#92400E' },
     ];
 
     // Referencias DOM
     this.colorInput = document.getElementById('product-new-color');
     this.colorPalette = document.getElementById('admin-colors-palette');
+    this.customColorHexInput = document.getElementById('product-custom-color-hex');
+    this.customColorNameInput = document.getElementById('product-custom-color-name');
     this.tanlaInput = document.getElementById('product-new-talla');
     this.btnAddColor = document.getElementById('btn-add-color');
+    this.btnAddCustomColor = document.getElementById('btn-add-custom-color');
     this.btnAddTalla = document.getElementById('btn-add-talla');
     this.colorsList = document.getElementById('product-colors-list');
     this.tallasList = document.getElementById('product-tallas-list');
@@ -56,6 +60,22 @@ class ProductVariationsBuilder {
 
     // Renderizar paleta de colores
     this.renderPalette();
+
+    if (this.btnAddCustomColor) {
+      this.btnAddCustomColor.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.addCustomColor();
+      });
+    }
+
+    if (this.customColorNameInput) {
+      this.customColorNameInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          this.addCustomColor();
+        }
+      });
+    }
 
     // Event listeners para el input de tallas (mantener como estaba)
     if (this.btnAddTalla) {
@@ -125,6 +145,7 @@ class ProductVariationsBuilder {
     this.colorPalette.innerHTML = this.DEFAULT_COLORS.map(color => `
       <div class="admin-color-option" 
            data-color-name="${this.escapeHtml(color.name, true)}"
+           data-color-hex="${this.escapeHtml(color.hex, true)}"
            title="${color.name}">
         <div class="admin-color-circle" style="background-color: ${color.hex}; border: 2px solid rgba(0,0,0,0.1);"></div>
         <span>${color.name}</span>
@@ -135,25 +156,85 @@ class ProductVariationsBuilder {
     this.colorPalette.querySelectorAll('.admin-color-option').forEach(option => {
       option.addEventListener('click', () => {
         const colorName = option.dataset.colorName;
-        this.addColor(colorName);
-        // Marcar como seleccionado
-        option.classList.add('selected');
+        const colorHex = option.dataset.colorHex;
+        this.addColor(colorName, colorHex);
       });
     });
   }
 
-  addColor(colorName) {
-    const color = (colorName || '').trim();
+  findDefaultColorByName(colorName) {
+    const normalizedColor = String(colorName || '').trim().toLowerCase();
+    if (!normalizedColor) return null;
+    return this.DEFAULT_COLORS.find(color => color.name.toLowerCase() === normalizedColor) || null;
+  }
+
+  normalizeHex(hex, fallback = '#999999') {
+    const normalizedHex = String(hex || '').trim();
+    return normalizedHex ? normalizedHex.toUpperCase() : fallback;
+  }
+
+  getColorHex(colorName) {
+    return this.normalizeHex(
+      this.colorHexMap[colorName] || this.findDefaultColorByName(colorName)?.hex || '#999999'
+    );
+  }
+
+  hasColor(colorName) {
+    const normalizedColor = String(colorName || '').trim().toLowerCase();
+    if (!normalizedColor) return false;
+    return this.colors.some(color => color.toLowerCase() === normalizedColor);
+  }
+
+  resetCustomColorInputs() {
+    if (this.customColorHexInput) this.customColorHexInput.value = '#000000';
+    if (this.customColorNameInput) this.customColorNameInput.value = '';
+  }
+
+  resetState() {
+    this.colors = [];
+    this.tallas = [];
+    this.colorHexMap = {};
+    this.variations = {};
+    this.variationImages = {};
+    this.variationImageUrls = {};
+    this.saveVariationsToInput();
+    this.resetCustomColorInputs();
+  }
+
+  addColor(colorName, hex = null) {
+    const rawColor = (colorName || '').trim();
+    const defaultColor = this.findDefaultColorByName(rawColor);
+    const color = defaultColor?.name || rawColor;
+
     if (!color) return;
-    if (this.colors.includes(color)) {
+    if (this.hasColor(color)) {
       alert('Este color ya existe');
       return;
     }
 
     this.colors.push(color);
+    this.colorHexMap[color] = this.normalizeHex(hex || defaultColor?.hex, defaultColor?.hex || '#999999');
     this.renderColors();
     this.renderMatrix();
     this.updatePaletteSelection();
+  }
+
+  addCustomColor() {
+    const colorName = this.customColorNameInput?.value?.trim() || '';
+    const colorHex = this.customColorHexInput?.value || '';
+
+    if (!colorName) {
+      alert('Escribe un nombre para el color.');
+      return;
+    }
+
+    if (this.hasColor(colorName)) {
+      alert('Ya existe un color con ese nombre.');
+      return;
+    }
+
+    this.addColor(colorName, colorHex);
+    this.resetCustomColorInputs();
   }
 
   addTalla() {
@@ -172,12 +253,24 @@ class ProductVariationsBuilder {
 
   removeColor(color) {
     this.colors = this.colors.filter(c => c !== color);
+    delete this.colorHexMap[color];
     // Limpiar variaciones relacionadas
     Object.keys(this.variations).forEach(key => {
       if (key.startsWith(color + '-')) {
         delete this.variations[key];
       }
     });
+    Object.keys(this.variationImages).forEach(key => {
+      if (key.startsWith(color + '-')) {
+        delete this.variationImages[key];
+      }
+    });
+    Object.keys(this.variationImageUrls).forEach(key => {
+      if (key.startsWith(color + '-')) {
+        delete this.variationImageUrls[key];
+      }
+    });
+    this.saveVariationsToInput();
     this.renderColors();
     this.renderMatrix();
     this.updatePaletteSelection();
@@ -191,6 +284,17 @@ class ProductVariationsBuilder {
         delete this.variations[key];
       }
     });
+    Object.keys(this.variationImages).forEach(key => {
+      if (key.endsWith('-' + talla)) {
+        delete this.variationImages[key];
+      }
+    });
+    Object.keys(this.variationImageUrls).forEach(key => {
+      if (key.endsWith('-' + talla)) {
+        delete this.variationImageUrls[key];
+      }
+    });
+    this.saveVariationsToInput();
     this.renderTallas();
     this.renderMatrix();
   }
@@ -198,7 +302,8 @@ class ProductVariationsBuilder {
   renderColors() {
     this.colorsList.innerHTML = this.colors
       .map(color => `
-        <div class="product-item-tag">
+        <div class="product-item-tag product-color-tag">
+          <i class="product-color-swatch" style="background-color: ${this.getColorHex(color)};" aria-hidden="true"></i>
           <span>${this.escapeHtml(color)}</span>
           <button type="button" class="product-item-remove" data-color="${this.escapeHtml(color, true)}">×</button>
         </div>
@@ -234,6 +339,8 @@ class ProductVariationsBuilder {
   renderMatrix() {
     if (this.colors.length === 0 || this.tallas.length === 0) {
       this.matrixSection.style.display = 'none';
+      this.matrix.innerHTML = '';
+      this.saveVariationsToInput();
       return;
     }
 
@@ -387,18 +494,23 @@ class ProductVariationsBuilder {
   }
 
   saveVariationsToInput() {
-    this.variationsDataInput.value = JSON.stringify(this.variations);
+    if (this.variationsDataInput) {
+      this.variationsDataInput.value = JSON.stringify(this.variations);
+    }
+  }
+
+  getColorsPayload() {
+    return this.colors.map(color => ({
+      name: color,
+      hex: this.getColorHex(color),
+    }));
   }
 
   // Cargar datos al editar
   loadFromProduct(product, variations = []) {
+    this.resetState();
+
     if (!product) {
-      // Resetear si es nuevo producto
-      this.colors = [];
-      this.tallas = [];
-      this.variations = {};
-      this.variationImages = {};
-      this.variationImageUrls = {};
       this.renderColors();
       this.renderTallas();
       this.renderMatrix();
@@ -408,14 +520,25 @@ class ProductVariationsBuilder {
 
     // Si el producto tiene colores en el JSON
     if (product.colores && typeof product.colores === 'string') {
-      try {
-        const coloresData = JSON.parse(product.colores);
-        if (Array.isArray(coloresData)) {
-          this.colors = coloresData;
-        }
-      } catch (e) {
-        // Es un string simple, ignorar
+      let coloresData = window.ColorPalette?.colorsFromJSON?.(product.colores) || [];
+
+      if (coloresData.length === 0) {
+        const legacyNames = product.colores.split(',').map(color => color.trim()).filter(Boolean);
+        coloresData = legacyNames.map((name) => ({
+          name,
+          hex: this.findDefaultColorByName(name)?.hex || '#999999',
+        }));
       }
+
+      coloresData.forEach((color) => {
+        const normalizedName = this.findDefaultColorByName(color?.name)?.name || String(color?.name || '').trim();
+        if (!normalizedName || this.hasColor(normalizedName)) return;
+        this.colors.push(normalizedName);
+        this.colorHexMap[normalizedName] = this.normalizeHex(
+          color?.hex,
+          this.findDefaultColorByName(normalizedName)?.hex || '#999999'
+        );
+      });
     }
 
     // Si el producto tiene talla
@@ -435,6 +558,13 @@ class ProductVariationsBuilder {
         if (v.image_url) {
           this.variationImageUrls[key] = v.image_url;
         }
+        if (v.color && !this.hasColor(v.color)) {
+          this.colors.push(v.color);
+          this.colorHexMap[v.color] = this.getColorHex(v.color);
+        }
+        if (v.talla && !this.tallas.includes(v.talla)) {
+          this.tallas.push(v.talla);
+        }
       });
     }
 
@@ -450,7 +580,7 @@ class ProductVariationsBuilder {
     // Marcar colores seleccionados en la paleta
     this.colorPalette.querySelectorAll('.admin-color-option').forEach(option => {
       const colorName = option.dataset.colorName;
-      option.classList.toggle('selected', this.colors.includes(colorName));
+      option.classList.toggle('selected', this.hasColor(colorName));
     });
   }
 
